@@ -120,7 +120,7 @@ const server = serve({
             "POST /extract-resume - Extract data from a resume PDF",
             "POST /extract-jd - Extract data from a job description PDF",
             "POST /generate-mcq - Generate MCQ questions based on a job description and resume",
-            "POST /match - Match a job description with resume(s) (supports multiple resumes via 'resumes' field)"
+            "POST /match - Match a job description with one or more resumes (supports both 'resume' for single file and 'resumes' for multiple files)"
           ]
         }),
         {

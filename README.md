@@ -7,7 +7,7 @@ AI-powered HR tools for resume parsing, job description analysis, and candidate 
 - **Resume Extraction**: Extract structured data from resume PDFs
 - **Job Description Extraction**: Extract structured data from job description PDFs
 - **MCQ Generation**: Generate multiple-choice questions based on job descriptions and resumes
-- **Job Matching**: Match job descriptions with resumes to determine compatibility
+- **Job Matching**: Match job descriptions with one or more resumes to determine compatibility
 
 ## Installation
 
@@ -157,22 +157,56 @@ Generate multiple-choice questions based on a job description and resume.
 ```
 POST /match
 ```
-Match a job description with a resume to determine compatibility.
+Match a job description with one or more resumes to determine compatibility.
 
 **Request:**
-- Form data with `jobDescription` and `resume` fields containing the PDF files
+- Form data with:
+  - `jobDescription` field containing the job description PDF file
+  - Either:
+    - `resume` field for a single resume (backward compatibility)
+    - `resumes` field for multiple resumes (can be used multiple times)
 
 **Response:**
 ```json
 {
   "success": true,
-  "data": {
-    "matchScore": 85,
-    "matchedSkills": ["JavaScript", "React"],
-    "unmatchedSkills": ["Node.js", "Python"],
-    "recommendations": ["Gain experience with Node.js", "Learn Python"],
-    "summary": "The candidate is a good match for this position with some skill gaps."
-  }
+  "results": [
+    {
+      "Id": "uuid-1",
+      "Resume Data": {
+        "Job Title": "Senior Software Engineer",
+        "Matching Percentage": "85",
+        "name": "John Doe",
+        "email": "john@example.com",
+        "skills": ["JavaScript", "React", "Node.js"]
+      },
+      "Analysis": {
+        "Matching Score": 85,
+        "Matched Skills": ["JavaScript", "React"],
+        "Unmatched Skills": ["Python", "AWS"],
+        "Strengths": ["5 years of relevant experience"],
+        "Recommendations": ["Gain experience with Python", "Get AWS certification"]
+      }
+    },
+    {
+      "Id": "uuid-2",
+      "Resume Data": {
+        "Job Title": "Senior Software Engineer",
+        "Matching Percentage": "72",
+        "name": "Jane Smith",
+        "email": "jane@example.com",
+        "skills": ["Python", "Django", "PostgreSQL"]
+      },
+      "Analysis": {
+        "Matching Score": 72,
+        "Matched Skills": ["Python"],
+        "Unmatched Skills": ["JavaScript", "React", "Node.js"],
+        "Strengths": ["3 years of backend development experience"],
+        "Recommendations": ["Learn JavaScript and React", "Gain frontend experience"]
+      }
+    }
+  ],
+  "errors": [] // Present only if there were errors processing any resumes
 }
 ```
 

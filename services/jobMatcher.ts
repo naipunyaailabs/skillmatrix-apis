@@ -43,7 +43,7 @@ function extractJsonFromResponse(response: string): any {
   try {
     return JSON.parse(response);
   } catch (e) {
-    // Clean the response by removing markdown code blocks if present
+    // Clean the response by removing markdown code blocks and explanatory text if present
     let cleanResponse = response.trim();
     
     // Remove markdown code block markers if present
@@ -59,72 +59,113 @@ function extractJsonFromResponse(response: string): any {
     
     cleanResponse = cleanResponse.trim();
     
-    // Look for JSON in the response
+    // Look for JSON in the response by finding the first opening brace
     const jsonStart = cleanResponse.indexOf("{");
     
     if (jsonStart !== -1) {
-      let jsonString = cleanResponse.substring(jsonStart);
-      
-      // Count opening and closing braces to see if we're missing any
-      const openBraces = (jsonString.match(/\{/g) || []).length;
-      const closeBraces = (jsonString.match(/\}/g) || []).length;
-      const openBrackets = (jsonString.match(/\[/g) || []).length;
-      const closeBrackets = (jsonString.match(/\]/g) || []).length;
-      
-      // Add missing closing braces/brackets
-      let missingBraces = openBraces - closeBraces;
-      let missingBrackets = openBrackets - closeBrackets;
-      
-      // Add missing closing brackets first
-      while (missingBrackets > 0) {
-        jsonString += "]";
-        missingBrackets--;
-      }
-      
-      // Then add missing closing braces
-      while (missingBraces > 0) {
-        jsonString += "}";
-        missingBraces--;
-      }
-      
-      try {
-        return JSON.parse(jsonString);
-      } catch (e2) {
-        // Try a more aggressive approach - find the last complete array or object
-        const lastArrayStart = jsonString.lastIndexOf("[");
-        const lastArrayEnd = jsonString.lastIndexOf("]");
-        const lastObjectStart = jsonString.lastIndexOf("{");
-        const lastObjectEnd = jsonString.lastIndexOf("}");
+      // Extract everything from the first opening brace to the last closing brace
+      const jsonEnd = cleanResponse.lastIndexOf("}") + 1;
+      if (jsonEnd > jsonStart) {
+        let jsonString = cleanResponse.substring(jsonStart, jsonEnd);
         
-        // If we have an unclosed array, try to close it properly
-        if (lastArrayStart > lastArrayEnd) {
-          // Find where the array should end (look for the last string or object in the array)
-          const lastQuote = jsonString.lastIndexOf('"');
-          const lastBrace = jsonString.lastIndexOf('}');
+        // Try to parse the extracted JSON
+        try {
+          return JSON.parse(jsonString);
+        } catch (e2) {
+          // If parsing fails, try to fix common issues
           
-          // Close the array at the appropriate position
-          const arrayEndPos = Math.max(lastQuote, lastBrace) + 1;
-          if (arrayEndPos > lastArrayStart) {
-            jsonString = jsonString.substring(0, arrayEndPos) + "]" + jsonString.substring(arrayEndPos);
+          // Count opening and closing braces to see if we're missing any
+          const openBraces = (jsonString.match(/\{/g) || []).length;
+          const closeBraces = (jsonString.match(/\}/g) || []).length;
+          const openBrackets = (jsonString.match(/\[/g) || []).length;
+          const closeBrackets = (jsonString.match(/\]/g) || []).length;
+          
+          // Add missing closing brackets first
+          let missingBrackets = openBrackets - closeBrackets;
+          while (missingBrackets > 0) {
+            jsonString += "]";
+            missingBrackets--;
+          }
+          
+          // Then add missing closing braces
+          let missingBraces = openBraces - closeBraces;
+          while (missingBraces > 0) {
+            jsonString += "}";
+            missingBraces--;
+          }
+          
+          try {
+            return JSON.parse(jsonString);
+          } catch (e3) {
+            // Try a more aggressive approach - find the last complete array or object
+            const lastArrayStart = jsonString.lastIndexOf("[");
+            const lastArrayEnd = jsonString.lastIndexOf("]");
+            const lastObjectStart = jsonString.lastIndexOf("{");
+            const lastObjectEnd = jsonString.lastIndexOf("}");
+            
+            // If we have an unclosed array, try to close it properly
+            if (lastArrayStart > lastArrayEnd) {
+              // Find where the array should end (look for the last string or object in the array)
+              const lastQuote = jsonString.lastIndexOf('"');
+              const lastBrace = jsonString.lastIndexOf('}');
+              
+              // Close the array at the appropriate position
+              const arrayEndPos = Math.max(lastQuote, lastBrace) + 1;
+              if (arrayEndPos > lastArrayStart) {
+                jsonString = jsonString.substring(0, arrayEndPos) + "]" + jsonString.substring(arrayEndPos);
+              }
+            }
+            
+            // If we have an unclosed object, try to close it properly
+            if (lastObjectStart > lastObjectEnd) {
+              // Find where the object should end (look for the last quote or bracket)
+              const lastQuote = jsonString.lastIndexOf('"');
+              const lastBracket = jsonString.lastIndexOf(']');
+              
+              // Close the object at the appropriate position
+              const objectEndPos = Math.max(lastQuote, lastBracket) + 1;
+              if (objectEndPos > lastObjectStart) {
+                jsonString = jsonString.substring(0, objectEndPos) + "}" + jsonString.substring(objectEndPos);
+              }
+            }
+            
+            try {
+              return JSON.parse(jsonString);
+            } catch (e4) {
+              // If we still can't parse, throw the original error
+              throw e;
+            }
           }
         }
+      } else {
+        // If we can't find a proper closing brace, try to construct a valid JSON
+        // by finding the last complete object or array and closing it properly
+        let jsonString = cleanResponse.substring(jsonStart);
         
-        // If we have an unclosed object, try to close it properly
-        if (lastObjectStart > lastObjectEnd) {
-          // Find where the object should end (look for the last quote or bracket)
-          const lastQuote = jsonString.lastIndexOf('"');
-          const lastBracket = jsonString.lastIndexOf(']');
-          
-          // Close the object at the appropriate position
-          const objectEndPos = Math.max(lastQuote, lastBracket) + 1;
-          if (objectEndPos > lastObjectStart) {
-            jsonString = jsonString.substring(0, objectEndPos) + "}" + jsonString.substring(objectEndPos);
-          }
+        // Try to fix common JSON issues
+        // Add missing closing brackets/braces
+        const openBraces = (jsonString.match(/\{/g) || []).length;
+        const closeBraces = (jsonString.match(/\}/g) || []).length;
+        const openBrackets = (jsonString.match(/\[/g) || []).length;
+        const closeBrackets = (jsonString.match(/\]/g) || []).length;
+        
+        // Add missing closing brackets first
+        let missingBrackets = openBraces - closeBraces;
+        while (missingBrackets > 0) {
+          jsonString += "]";
+          missingBrackets--;
+        }
+        
+        // Then add missing closing braces
+        let missingBraces = openBraces - closeBraces;
+        while (missingBraces > 0) {
+          jsonString += "}";
+          missingBraces--;
         }
         
         try {
           return JSON.parse(jsonString);
-        } catch (e3) {
+        } catch (e2) {
           // If we still can't parse, throw the original error
           throw e;
         }
