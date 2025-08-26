@@ -75,8 +75,11 @@ export async function jobMatchHandler(req: Request): Promise<Response> {
               "Matched Skills": matchResult.matchedSkills,
               "Strengths": matchResult.strengths || [],
               "Recommendations": matchResult.recommendations,
-              "Industrial Experience Match": matchResult.industrialExperienceMatch || 0,
-              "Domain Experience Match": matchResult.domainExperienceMatch || 0
+              // Replacing match scores with experience details
+              "Required Industrial Experience": `${matchResult.requiredIndustrialExperienceYears || 0} years`,
+              "Required Domain Experience": `${matchResult.requiredDomainExperienceYears || 0} years`,
+              "Candidate Industrial Experience": matchResult.industrialExperienceDetails || `${matchResult.candidateIndustrialExperienceYears || 0} years`,
+              "Candidate Domain Experience": matchResult.domainExperienceDetails || `${matchResult.candidateDomainExperienceYears || 0} years`
             }
           }
         ]

@@ -40,6 +40,8 @@ HR_TOOLS_PORT=3001
 
 ## Running the Server
 
+### Using Bun (Native)
+
 To start the HR tools server:
 
 ```bash
@@ -51,6 +53,27 @@ Or for development with auto-reload:
 ```bash
 bun run dev
 ```
+
+### Using Docker
+
+1. Build the Docker image:
+   ```bash
+   docker build -t docapture-hr-tools .
+   ```
+
+2. Run the container:
+   ```bash
+   docker run -p 3001:3001 --env-file .env docapture-hr-tools
+   ```
+
+### Using Docker Compose
+
+1. Build and run with docker-compose:
+   ```bash
+   docker-compose up --build
+   ```
+
+The server will be available at `http://localhost:3001`
 
 ## API Endpoints
 

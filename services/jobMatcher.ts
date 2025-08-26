@@ -8,9 +8,14 @@ export interface MatchResult {
   unmatchedSkills: string[];
   recommendations: string[];
   summary: string;
-  strengths?: string[]; // Adding optional strengths field
-  industrialExperienceMatch?: number; // Adding industrial experience match score
-  domainExperienceMatch?: number; // Adding domain experience match score
+  strengths?: string[];
+  // Removing match scores and adding experience details
+  requiredIndustrialExperienceYears?: number;
+  requiredDomainExperienceYears?: number;
+  candidateIndustrialExperienceYears?: number;
+  candidateDomainExperienceYears?: number;
+  industrialExperienceDetails?: string;
+  domainExperienceDetails?: string;
 }
 
 const JOB_MATCHING_PROMPT = `You are an expert HR consultant specializing in job-resume matching analysis.
@@ -24,8 +29,12 @@ Return ONLY the JSON object in the following format:
   "recommendations": ["List of recommendations to improve the match"],
   "summary": "A brief summary of the match analysis",
   "strengths": ["List of strengths in the resume that match the job requirements"],
-  "industrialExperienceMatch": "Matching percentage for industrial experience (0-100)",
-  "domainExperienceMatch": "Matching percentage for domain experience (0-100)"
+  "requiredIndustrialExperienceYears": "Required industrial experience years from job description",
+  "requiredDomainExperienceYears": "Required domain experience years from job description",
+  "candidateIndustrialExperienceYears": "Candidate's industrial experience years from resume",
+  "candidateDomainExperienceYears": "Candidate's domain experience years from resume",
+  "industrialExperienceDetails": "Detailed description of candidate's industrial experience (e.g., '3 years 2 months')",
+  "domainExperienceDetails": "Detailed description of candidate's domain experience (e.g., '1 year 4 months')"
 }
 
 Return only the JSON object. Do not include any other text, markdown formatting, or explanations.`;
@@ -150,10 +159,14 @@ Required Skills:
 ${jobDescription.skills.join('\n')}
 
 Required Industrial Experience:
-${(jobDescription.industrialExperience || []).join('\n')}
+${Array.isArray(jobDescription.industrialExperience) ? jobDescription.industrialExperience.join('\n') : 'Not specified'}
 
 Required Domain Experience:
-${(jobDescription.domainExperience || []).join('\n')}
+${Array.isArray(jobDescription.domainExperience) ? jobDescription.domainExperience.join('\n') : 'Not specified'}
+
+Required Industrial Experience Years: ${jobDescription.requiredIndustrialExperienceYears || 0}
+
+Required Domain Experience Years: ${jobDescription.requiredDomainExperienceYears || 0}
 
 Candidate Name: ${resume.name}
 Candidate Email: ${resume.email}
@@ -166,10 +179,14 @@ Candidate Experience:
 ${resume.experience.join('\n')}
 
 Candidate Industrial Experience:
-${(resume.industrialExperience || []).join('\n')}
+${Array.isArray(resume.industrialExperience) ? resume.industrialExperience.join('\n') : 'Not specified'}
 
 Candidate Domain Experience:
-${(resume.domainExperience || []).join('\n')}
+${Array.isArray(resume.domainExperience) ? resume.domainExperience.join('\n') : 'Not specified'}
+
+Candidate Industrial Experience Years: ${resume.totalIndustrialExperienceYears || 0}
+
+Candidate Domain Experience Years: ${resume.totalDomainExperienceYears || 0}
 
 Candidate Education:
 ${resume.education.join('\n')}

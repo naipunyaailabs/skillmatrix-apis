@@ -1,0 +1,9 @@
+node_modules
+.git
+.gitignore
+README.md
+bun.lock
+.env
+.dockerignore
+test-experience.js
+test-hr-tools.js

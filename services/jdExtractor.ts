@@ -1,6 +1,7 @@
-import { groqChatCompletion } from '../utils/groqClient';
-import { parsePDF } from '../utils/pdfParser';
+import { groqChatCompletion } from "../utils/groqClient";
+import { parsePDF } from "../utils/pdfParser";
 
+// Interface for job description data
 export interface JobDescriptionData {
   title: string;
   company: string;
@@ -9,13 +10,14 @@ export interface JobDescriptionData {
   requirements: string[];
   responsibilities: string[];
   skills: string[];
-  industrialExperience?: string[]; // Adding industrial experience requirements
-  domainExperience?: string[];    // Adding domain experience requirements
+  industrialExperience: string[];
+  domainExperience: string[];
+  requiredIndustrialExperienceYears: number;
+  requiredDomainExperienceYears: number;
 }
 
 const JD_EXTRACTION_PROMPT = `You are an expert HR assistant specializing in extracting information from job descriptions.
-Extract the following information from the job description text and return it in JSON format:
-
+Extract the key information from the job description and return ONLY the JSON object in the following format:
 {
   "title": "Job title",
   "company": "Company name",
@@ -24,11 +26,13 @@ Extract the following information from the job description text and return it in
   "requirements": ["List of job requirements"],
   "responsibilities": ["List of job responsibilities"],
   "skills": ["List of required skills"],
-  "industrialExperience": ["List of required industrial experiences (e.g., manufacturing, finance, healthcare, etc.)"],
-  "domainExperience": ["List of required domain-specific experiences (e.g., machine learning, cloud computing, data analysis, etc.)"]
+  "industrialExperience": ["List of required industrial experience"],
+  "domainExperience": ["List of required domain experience"],
+  "requiredIndustrialExperienceYears": "Required years of industrial experience as a number",
+  "requiredDomainExperienceYears": "Required years of domain experience as a number"
 }
 
-Return ONLY the JSON object. Do not include any other text, markdown formatting, or explanations.`;
+Return only the JSON object. Do not include any other text, markdown formatting, or explanations.`;
 
 // Function to extract JSON from AI response
 function extractJsonFromResponse(response: string): any {
@@ -141,8 +145,36 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
     
     // Parse the JSON response
     try {
-      const jdData: JobDescriptionData = extractJsonFromResponse(response);
-      return jdData;
+      let jdData: any = extractJsonFromResponse(response);
+      
+      // Ensure proper data types
+      if (jdData.industrialExperience && !Array.isArray(jdData.industrialExperience)) {
+        jdData.industrialExperience = [String(jdData.industrialExperience)];
+      }
+      
+      if (jdData.domainExperience && !Array.isArray(jdData.domainExperience)) {
+        jdData.domainExperience = [String(jdData.domainExperience)];
+      }
+      
+      if (jdData.requiredIndustrialExperienceYears && typeof jdData.requiredIndustrialExperienceYears !== 'number') {
+        jdData.requiredIndustrialExperienceYears = Number(jdData.requiredIndustrialExperienceYears) || 0;
+      }
+      
+      if (jdData.requiredDomainExperienceYears && typeof jdData.requiredDomainExperienceYears !== 'number') {
+        jdData.requiredDomainExperienceYears = Number(jdData.requiredDomainExperienceYears) || 0;
+      }
+      
+      // Ensure all array fields are actually arrays
+      const arrayFields = ['requirements', 'responsibilities', 'skills'];
+      arrayFields.forEach(field => {
+        if (jdData[field] && !Array.isArray(jdData[field])) {
+          jdData[field] = [String(jdData[field])];
+        } else if (!jdData[field]) {
+          jdData[field] = [];
+        }
+      });
+      
+      return jdData as JobDescriptionData;
     } catch (parseError) {
       console.error('[JDExtractor] Error parsing JSON response:', parseError);
       console.error('[JDExtractor] Raw response:', response);

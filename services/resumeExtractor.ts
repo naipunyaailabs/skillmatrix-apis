@@ -1,6 +1,7 @@
-import { groqChatCompletion } from '../utils/groqClient';
-import { parsePDF } from '../utils/pdfParser';
+import { groqChatCompletion } from "../utils/groqClient";
+import { parsePDF } from "../utils/pdfParser";
 
+// Interface for resume data
 export interface ResumeData {
   name: string;
   email: string;
@@ -9,26 +10,29 @@ export interface ResumeData {
   experience: string[];
   education: string[];
   certifications: string[];
-  industrialExperience?: string[]; // Adding industrial experience
-  domainExperience?: string[];    // Adding domain-specific experience
+  industrialExperience: string[];
+  domainExperience: string[];
+  totalIndustrialExperienceYears: number;
+  totalDomainExperienceYears: number;
 }
 
-const RESUME_EXTRACTION_PROMPT = `You are an expert HR assistant specializing in extracting information from resumes. 
-Extract the following information from the resume text and return it in JSON format:
-
+const RESUME_EXTRACTION_PROMPT = `You are an expert HR assistant specializing in extracting information from resumes.
+Extract the key information from the resume and return ONLY the JSON object in the following format:
 {
-  "name": "Candidate's full name",
-  "email": "Candidate's email address",
-  "phone": "Candidate's phone number",
-  "skills": ["List of technical and soft skills"],
-  "experience": ["List of work experiences with company names and roles"],
+  "name": "Candidate name",
+  "email": "Email address",
+  "phone": "Phone number",
+  "skills": ["List of skills"],
+  "experience": ["List of work experiences"],
   "education": ["List of educational qualifications"],
-  "certifications": ["List of professional certifications"],
-  "industrialExperience": ["List of industrial experiences (e.g., manufacturing, finance, healthcare, etc.)"],
-  "domainExperience": ["List of domain-specific experiences (e.g., machine learning, cloud computing, data analysis, etc.)"]
+  "certifications": ["List of certifications"],
+  "industrialExperience": ["List of industrial experience"],
+  "domainExperience": ["List of domain experience"],
+  "totalIndustrialExperienceYears": "Total years of industrial experience as a number",
+  "totalDomainExperienceYears": "Total years of domain experience as a number"
 }
 
-Return ONLY the JSON object. Do not include any other text, markdown formatting, or explanations.`;
+Return only the JSON object. Do not include any other text, markdown formatting, or explanations.`;
 
 // Function to extract JSON from AI response
 function extractJsonFromResponse(response: string): any {
@@ -141,8 +145,36 @@ export async function extractResumeData(buffer: Buffer): Promise<ResumeData> {
     
     // Parse the JSON response
     try {
-      const resumeData: ResumeData = extractJsonFromResponse(response);
-      return resumeData;
+      let resumeData: any = extractJsonFromResponse(response);
+      
+      // Ensure proper data types
+      if (resumeData.industrialExperience && !Array.isArray(resumeData.industrialExperience)) {
+        resumeData.industrialExperience = [String(resumeData.industrialExperience)];
+      }
+      
+      if (resumeData.domainExperience && !Array.isArray(resumeData.domainExperience)) {
+        resumeData.domainExperience = [String(resumeData.domainExperience)];
+      }
+      
+      if (resumeData.totalIndustrialExperienceYears && typeof resumeData.totalIndustrialExperienceYears !== 'number') {
+        resumeData.totalIndustrialExperienceYears = Number(resumeData.totalIndustrialExperienceYears) || 0;
+      }
+      
+      if (resumeData.totalDomainExperienceYears && typeof resumeData.totalDomainExperienceYears !== 'number') {
+        resumeData.totalDomainExperienceYears = Number(resumeData.totalDomainExperienceYears) || 0;
+      }
+      
+      // Ensure all array fields are actually arrays
+      const arrayFields = ['skills', 'experience', 'education', 'certifications'];
+      arrayFields.forEach(field => {
+        if (resumeData[field] && !Array.isArray(resumeData[field])) {
+          resumeData[field] = [String(resumeData[field])];
+        } else if (!resumeData[field]) {
+          resumeData[field] = [];
+        }
+      });
+      
+      return resumeData as ResumeData;
     } catch (parseError) {
       console.error('[ResumeExtractor] Error parsing JSON response:', parseError);
       console.error('[ResumeExtractor] Raw response:', response);
