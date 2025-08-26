@@ -1,6 +1,5 @@
 # Bun server related ignores
 node_modules/
-bun.lockb
 .env
 dist/
 .cache/
