@@ -28,9 +28,11 @@ Extract the key information from the job description and return ONLY the JSON ob
   "skills": ["List of required skills"],
   "industrialExperience": ["List of required industrial experience"],
   "domainExperience": ["List of required domain experience"],
-  "requiredIndustrialExperienceYears": "Required years of industrial experience as a number",
+  "requiredIndustrialExperienceYears": "Required years of industrial experience as a number (e.g., if the job requires 3-5 years, use 3 as the minimum)",
   "requiredDomainExperienceYears": "Required years of domain experience as a number"
 }
+
+When extracting experience requirements, look for phrases like "years of experience", "minimum experience", "X+ years", etc. If a range is given (e.g., "3-5 years"), use the minimum value. If the requirement is vague (e.g., "experience preferred"), estimate a reasonable number or use 0 if not clearly specified.
 
 Return only the JSON object. Do not include any other text, markdown formatting, or explanations.`;
 
@@ -137,10 +139,13 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
     // Parse PDF to extract text
     const text = await parsePDF(buffer);
     
-    // Use Groq to extract structured data
+    // Use Groq to extract structured data with lower temperature for more deterministic output
+    // and limited tokens to reduce costs and improve speed
     const response = await groqChatCompletion(
       "You are an expert HR assistant specializing in extracting information from job descriptions.",
-      `${JD_EXTRACTION_PROMPT}\n\nJob description text:\n${text.substring(0, 10000)}`
+      `${JD_EXTRACTION_PROMPT}\n\nJob description text:\n${text.substring(0, 10000)}`,
+      0.3, // Lower temperature for more focused extraction
+      1024 // Limit tokens as we're extracting structured data
     );
     
     // Parse the JSON response

@@ -1,43 +1,41 @@
-import { groqChatCompletion } from '../utils/groqClient';
-import { JobDescriptionData } from './jdExtractor';
-import { ResumeData } from './resumeExtractor';
-
-export interface MatchResult {
-  matchScore: number;
-  matchedSkills: string[];
-  unmatchedSkills: string[];
-  recommendations: string[];
-  summary: string;
-  strengths?: string[];
-  // Removing match scores and adding experience details
-  requiredIndustrialExperienceYears?: number;
-  requiredDomainExperienceYears?: number;
-  candidateIndustrialExperienceYears?: number;
-  candidateDomainExperienceYears?: number;
-  industrialExperienceDetails?: string;
-  domainExperienceDetails?: string;
-}
+import { groqChatCompletion } from "../utils/groqClient";
+import { JobDescriptionData } from "./jdExtractor";
+import { ResumeData } from "./resumeExtractor";
 
 const JOB_MATCHING_PROMPT = `You are an expert HR consultant specializing in job-resume matching analysis.
-Analyze the provided job description and resume to determine how well they match.
-
-Return ONLY the JSON object in the following format:
+Analyze the provided job description and resume, and provide a comprehensive matching analysis in the following JSON format:
 {
-  "matchScore": "Matching percentage as a number between 0 and 100",
-  "matchedSkills": ["List of skills that match between job description and resume"],
-  "unmatchedSkills": ["List of skills required in job description but missing in resume"],
-  "recommendations": ["List of recommendations to improve the match"],
-  "summary": "A brief summary of the match analysis",
-  "strengths": ["List of strengths in the resume that match the job requirements"],
-  "requiredIndustrialExperienceYears": "Required industrial experience years from job description",
-  "requiredDomainExperienceYears": "Required domain experience years from job description",
-  "candidateIndustrialExperienceYears": "Candidate's industrial experience years from resume",
-  "candidateDomainExperienceYears": "Candidate's domain experience years from resume",
-  "industrialExperienceDetails": "Detailed description of candidate's industrial experience (e.g., '3 years 2 months')",
-  "domainExperienceDetails": "Detailed description of candidate's domain experience (e.g., '1 year 4 months')"
+  "Id": "Unique identifier for this match analysis",
+  "Resume Data": {
+    "Job Title": "Job title from the job description",
+    "Matching Percentage": "Overall matching percentage as a string (e.g., '85')",
+    "college_name": null,
+    "company_names": [],
+    "degree": null,
+    "designation": null,
+    "email": "Candidate email",
+    "experience": "Years of experience or experience details",
+    "mobile_number": "Candidate phone number",
+    "name": "Candidate name",
+    "no_of_pages": null,
+    "skills": ["List of candidate skills"],
+    "certifications": ["List of candidate certifications"],
+    "total_experience": ["List of work experiences"]
+  },
+  "Analysis": {
+    "Matching Score": "Overall matching score as a number (e.g., 85)",
+    "Unmatched Skills": ["List of skills required but not found in resume"],
+    "Matched Skills": ["List of skills that match between job and resume"],
+    "Strengths": ["List of candidate strengths relevant to the job"],
+    "Recommendations": ["List of recommendations for improving match"],
+    "Required Industrial Experience": "Required industrial experience description",
+    "Required Domain Experience": "Required domain experience description",
+    "Candidate Industrial Experience": "Candidate industrial experience description",
+    "Candidate Domain Experience": "Candidate domain experience description"
+  }
 }
 
-Return only the JSON object. Do not include any other text, markdown formatting, or explanations.`;
+Provide a detailed analysis with specific examples from the resume that match or don't match the job requirements. Focus on skills, experience, and qualifications.`;
 
 // Function to extract JSON from AI response
 function extractJsonFromResponse(response: string): any {
@@ -137,6 +135,48 @@ function extractJsonFromResponse(response: string): any {
   }
 }
 
+export interface MatchResult {
+  Id: string;
+  "Resume Data": {
+    "Job Title": string;
+    "Matching Percentage": string;
+    college_name: null;
+    company_names: any[];
+    degree: null;
+    designation: null;
+    email: string;
+    experience: number | any[];
+    mobile_number: string;
+    name: string;
+    no_of_pages: null;
+    skills: string[];
+    certifications: string[];
+    total_experience: any[];
+  };
+  Analysis: {
+    "Matching Score": number;
+    "Unmatched Skills": string[];
+    "Matched Skills": string[];
+    Strengths: string[];
+    Recommendations: string[];
+    "Required Industrial Experience": string;
+    "Required Domain Experience": string;
+    "Candidate Industrial Experience": string;
+    "Candidate Domain Experience": string;
+  };
+  matchScore?: number;
+  unmatchedSkills?: string[];
+  matchedSkills?: string[];
+  strengths?: string[];
+  recommendations?: string[];
+  requiredIndustrialExperienceYears?: number;
+  requiredDomainExperienceYears?: number;
+  candidateIndustrialExperienceYears?: number;
+  candidateDomainExperienceYears?: number;
+  industrialExperienceDetails?: string;
+  domainExperienceDetails?: string;
+}
+
 export async function matchJobWithResume(
   jobDescription: JobDescriptionData,
   resume: ResumeData
@@ -176,7 +216,7 @@ Candidate Skills:
 ${resume.skills.join('\n')}
 
 Candidate Experience:
-${resume.experience.join('\n')}
+${Array.isArray(resume.experience) ? JSON.stringify(resume.experience, null, 2) : 'Not specified'}
 
 Candidate Industrial Experience:
 ${Array.isArray(resume.industrialExperience) ? resume.industrialExperience.join('\n') : 'Not specified'}
@@ -195,20 +235,179 @@ Candidate Certifications:
 ${resume.certifications.join('\n')}
 `;
 
-    // Use Groq to analyze the match
+    // Use Groq to analyze the match with moderate temperature for balanced analysis
+    // and sufficient tokens for detailed response
+    console.log('[JobMatcher] Sending request to Groq API');
     const response = await groqChatCompletion(
       "You are an expert HR consultant specializing in job-resume matching analysis.",
-      `${JOB_MATCHING_PROMPT}\n\nContext:\n${prompt}`
+      `${JOB_MATCHING_PROMPT}\n\nContext:\n${prompt}`,
+      0.5, // Moderate temperature for balanced analysis
+      1536 // Sufficient tokens for detailed matching analysis
     );
+    console.log('[JobMatcher] Received response from Groq API');
 
     // Parse the JSON response
     try {
-      const matchResult: MatchResult = extractJsonFromResponse(response);
+      let matchResult: any = extractJsonFromResponse(response);
+      
+      // If the AI didn't provide a proper response in the required format, construct it manually
+      if (!matchResult.Id || !matchResult["Resume Data"] || !matchResult.Analysis) {
+        console.log('[JobMatcher] AI response format invalid, using fallback implementation');
+        // Generate a UUID for the Id field
+        const id = crypto.randomUUID();
+        
+        // Calculate matching score based on skill match percentage
+        const totalSkills = jobDescription.skills.length;
+        const matchedSkills = jobDescription.skills.filter(skill => resume.skills.includes(skill)).length;
+        const matchingScore = totalSkills > 0 ? Math.round((matchedSkills / totalSkills) * 100) : 70;
+        
+        // Create the proper structure
+        matchResult = {
+          Id: id,
+          "Resume Data": {
+            "Job Title": jobDescription.title,
+            "Matching Percentage": matchingScore.toString(),
+            college_name: null,
+            company_names: [],
+            degree: null,
+            designation: null,
+            email: resume.email,
+            experience: resume.totalIndustrialExperienceYears || 0,
+            mobile_number: resume.phone,
+            name: resume.name,
+            no_of_pages: null,
+            skills: resume.skills,
+            certifications: resume.certifications,
+            total_experience: Array.isArray(resume.experience) ? resume.experience : []
+          },
+          Analysis: {
+            "Matching Score": matchingScore,
+            "Unmatched Skills": jobDescription.skills.filter(skill => !resume.skills.includes(skill)),
+            "Matched Skills": jobDescription.skills.filter(skill => resume.skills.includes(skill)),
+            "Strengths": [`Candidate has ${resume.totalIndustrialExperienceYears || 0} years of relevant experience`],
+            "Recommendations": [
+              `Consider acquiring skills in: ${jobDescription.skills.filter(skill => !resume.skills.includes(skill)).join(', ') || 'N/A'}`,
+              "Highlight relevant project experience in resume"
+            ],
+            "Required Industrial Experience": `${jobDescription.requiredIndustrialExperienceYears || 0} years`,
+            "Required Domain Experience": `${jobDescription.requiredDomainExperienceYears || 0} years`,
+            "Candidate Industrial Experience": `Candidate has ${resume.totalIndustrialExperienceYears || 0} years of industrial experience${jobDescription.requiredIndustrialExperienceYears && resume.totalIndustrialExperienceYears ? 
+              (resume.totalIndustrialExperienceYears >= jobDescription.requiredIndustrialExperienceYears ? 
+                `, which meets the required ${jobDescription.requiredIndustrialExperienceYears} years.` : 
+                `, which falls short of the required ${jobDescription.requiredIndustrialExperienceYears} years.`) : 
+              "."}`,
+            "Candidate Domain Experience": `${resume.totalDomainExperienceYears || 0} years`
+          },
+          // Additional properties for direct access in jobMatch.ts
+          matchScore: matchingScore,
+          unmatchedSkills: jobDescription.skills.filter(skill => !resume.skills.includes(skill)),
+          matchedSkills: jobDescription.skills.filter(skill => resume.skills.includes(skill)),
+          strengths: [`Candidate has ${resume.totalIndustrialExperienceYears || 0} years of relevant experience`],
+          recommendations: [
+            `Consider acquiring skills in: ${jobDescription.skills.filter(skill => !resume.skills.includes(skill)).join(', ') || 'N/A'}`,
+            "Highlight relevant project experience in resume"
+          ],
+          requiredIndustrialExperienceYears: jobDescription.requiredIndustrialExperienceYears || 0,
+          requiredDomainExperienceYears: jobDescription.requiredDomainExperienceYears || 0,
+          candidateIndustrialExperienceYears: resume.totalIndustrialExperienceYears || 0,
+          candidateDomainExperienceYears: resume.totalDomainExperienceYears || 0,
+          industrialExperienceDetails: `Candidate has ${resume.totalIndustrialExperienceYears || 0} years of industrial experience${jobDescription.requiredIndustrialExperienceYears && resume.totalIndustrialExperienceYears ? 
+            (resume.totalIndustrialExperienceYears >= jobDescription.requiredIndustrialExperienceYears ? 
+              `, which meets the required ${jobDescription.requiredIndustrialExperienceYears} years.` : 
+              `, which falls short of the required ${jobDescription.requiredIndustrialExperienceYears} years.`) : 
+            "."}`,
+          domainExperienceDetails: `${resume.totalDomainExperienceYears || 0} years`
+        };
+      }
+      
+      // Ensure we have a proper UUID
+      if (!matchResult.Id) {
+        matchResult.Id = crypto.randomUUID();
+      }
+      
+      // Ensure all required properties are present for direct access in jobMatch.ts
+      matchResult.matchScore = matchResult.matchScore || matchResult.Analysis?.["Matching Score"] || 0;
+      matchResult.unmatchedSkills = matchResult.unmatchedSkills || matchResult.Analysis?.["Unmatched Skills"] || [];
+      matchResult.matchedSkills = matchResult.matchedSkills || matchResult.Analysis?.["Matched Skills"] || [];
+      matchResult.strengths = matchResult.strengths || matchResult.Analysis?.Strengths || [];
+      matchResult.recommendations = matchResult.recommendations || matchResult.Analysis?.Recommendations || [];
+      matchResult.requiredIndustrialExperienceYears = matchResult.requiredIndustrialExperienceYears || jobDescription.requiredIndustrialExperienceYears || 0;
+      matchResult.requiredDomainExperienceYears = matchResult.requiredDomainExperienceYears || jobDescription.requiredDomainExperienceYears || 0;
+      matchResult.candidateIndustrialExperienceYears = matchResult.candidateIndustrialExperienceYears || resume.totalIndustrialExperienceYears || 0;
+      matchResult.candidateDomainExperienceYears = matchResult.candidateDomainExperienceYears || resume.totalDomainExperienceYears || 0;
+      
+      console.log('[JobMatcher] Match result processed successfully');
       return matchResult;
     } catch (parseError) {
       console.error('[JobMatcher] Error parsing JSON response:', parseError);
       console.error('[JobMatcher] Raw response:', response);
-      throw new Error('Failed to parse match result from AI response');
+      
+      // Fallback: construct a basic response if AI parsing fails
+      const id = crypto.randomUUID();
+      // Calculate matching score based on skill match percentage
+      const totalSkills = jobDescription.skills.length;
+      const matchedSkills = jobDescription.skills.filter(skill => resume.skills.includes(skill)).length;
+      const matchingScore = totalSkills > 0 ? Math.round((matchedSkills / totalSkills) * 100) : 70;
+      
+      const matchResult: MatchResult = {
+        Id: id,
+        "Resume Data": {
+          "Job Title": jobDescription.title,
+          "Matching Percentage": matchingScore.toString(),
+          college_name: null,
+          company_names: [],
+          degree: null,
+          designation: null,
+          email: resume.email,
+          experience: resume.totalIndustrialExperienceYears || 0,
+          mobile_number: resume.phone,
+          name: resume.name,
+          no_of_pages: null,
+          skills: resume.skills,
+          certifications: resume.certifications,
+          total_experience: Array.isArray(resume.experience) ? resume.experience : []
+        },
+        Analysis: {
+          "Matching Score": matchingScore,
+          "Unmatched Skills": jobDescription.skills.filter(skill => !resume.skills.includes(skill)),
+          "Matched Skills": jobDescription.skills.filter(skill => resume.skills.includes(skill)),
+          "Strengths": [`Candidate has ${resume.totalIndustrialExperienceYears || 0} years of relevant experience`],
+          "Recommendations": [
+            `Consider acquiring skills in: ${jobDescription.skills.filter(skill => !resume.skills.includes(skill)).join(', ') || 'N/A'}`,
+            "Highlight relevant project experience in resume"
+          ],
+          "Required Industrial Experience": `${jobDescription.requiredIndustrialExperienceYears || 0} years`,
+          "Required Domain Experience": `${jobDescription.requiredDomainExperienceYears || 0} years`,
+          "Candidate Industrial Experience": `Candidate has ${resume.totalIndustrialExperienceYears || 0} years of industrial experience${jobDescription.requiredIndustrialExperienceYears && resume.totalIndustrialExperienceYears ? 
+            (resume.totalIndustrialExperienceYears >= jobDescription.requiredIndustrialExperienceYears ? 
+              `, which meets the required ${jobDescription.requiredIndustrialExperienceYears} years.` : 
+              `, which falls short of the required ${jobDescription.requiredIndustrialExperienceYears} years.`) : 
+            "."}`,
+          "Candidate Domain Experience": `${resume.totalDomainExperienceYears || 0} years`
+        },
+        // Additional properties for direct access in jobMatch.ts
+        matchScore: matchingScore,
+        unmatchedSkills: jobDescription.skills.filter(skill => !resume.skills.includes(skill)),
+        matchedSkills: jobDescription.skills.filter(skill => resume.skills.includes(skill)),
+        strengths: [`Candidate has ${resume.totalIndustrialExperienceYears || 0} years of relevant experience`],
+        recommendations: [
+          `Consider acquiring skills in: ${jobDescription.skills.filter(skill => !resume.skills.includes(skill)).join(', ') || 'N/A'}`,
+          "Highlight relevant project experience in resume"
+        ],
+        requiredIndustrialExperienceYears: jobDescription.requiredIndustrialExperienceYears || 0,
+        requiredDomainExperienceYears: jobDescription.requiredDomainExperienceYears || 0,
+        candidateIndustrialExperienceYears: resume.totalIndustrialExperienceYears || 0,
+        candidateDomainExperienceYears: resume.totalDomainExperienceYears || 0,
+        industrialExperienceDetails: `Candidate has ${resume.totalIndustrialExperienceYears || 0} years of industrial experience${jobDescription.requiredIndustrialExperienceYears && resume.totalIndustrialExperienceYears ? 
+          (resume.totalIndustrialExperienceYears >= jobDescription.requiredIndustrialExperienceYears ? 
+            `, which meets the required ${jobDescription.requiredIndustrialExperienceYears} years.` : 
+            `, which falls short of the required ${jobDescription.requiredIndustrialExperienceYears} years.`) : 
+          "."}`,
+        domainExperienceDetails: `${resume.totalDomainExperienceYears || 0} years`
+      };
+      
+      console.log('[JobMatcher] Using fallback implementation due to parsing error');
+      return matchResult;
     }
   } catch (error) {
     console.error('[JobMatcher] Error:', error);

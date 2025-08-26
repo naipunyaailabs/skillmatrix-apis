@@ -162,10 +162,13 @@ Candidate Certifications:
 ${resume.certifications.join('\n')}
 `;
 
-    // Use Groq to generate MCQ questions
+    // Use Groq to generate MCQ questions with moderate temperature for creativity
+    // and higher token limit as we're generating multiple questions
     const response = await groqChatCompletion(
       "You are an expert assessment creator specializing in generating multiple-choice questions.",
-      `${MCQ_GENERATION_PROMPT}\n\nContext:\n${prompt}`
+      `${MCQ_GENERATION_PROMPT}\n\nContext:\n${prompt}`,
+      0.7, // Moderate temperature for creative question generation
+      2048 // Higher token limit as we're generating multiple questions with explanations
     );
 
     // Parse the JSON response

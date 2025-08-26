@@ -10,9 +10,47 @@ config();
 
 const PORT = process.env.HR_TOOLS_PORT || 3001;
 
+// Simple request logging
+function logRequest(req: Request, startTime: number, status: number) {
+  const duration = Date.now() - startTime;
+  const url = new URL(req.url);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${url.pathname} ${status} ${duration}ms`);
+}
+
+// Rate limiting middleware
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 100; // Adjust as needed
+
+function checkRateLimit(ip: string): { allowed: boolean; resetTime?: number } {
+  const now = Date.now();
+  
+  if (!rateLimitMap.has(ip)) {
+    rateLimitMap.set(ip, { count: 0, resetTime: now + RATE_LIMIT_WINDOW });
+  }
+  
+  const rateData = rateLimitMap.get(ip)!;
+  
+  // Reset counter if window has passed
+  if (now >= rateData.resetTime) {
+    rateData.count = 0;
+    rateData.resetTime = now + RATE_LIMIT_WINDOW;
+  }
+  
+  // Check if we're within limits
+  if (rateData.count < MAX_REQUESTS_PER_WINDOW) {
+    rateData.count++;
+    return { allowed: true };
+  }
+  
+  return { allowed: false, resetTime: rateData.resetTime };
+}
+
 const server = serve({
   fetch: async (req) => {
+    const startTime = Date.now();
     const url = new URL(req.url);
+    const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
     
     // Handle CORS
     const corsHeaders = {
@@ -21,46 +59,101 @@ const server = serve({
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     };
     
+    // Apply rate limiting
+    const rateLimitResult = checkRateLimit(ip);
+    if (!rateLimitResult.allowed) {
+      const retryAfter = Math.ceil((rateLimitResult.resetTime! - Date.now()) / 1000);
+      logRequest(req, startTime, 429);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Rate limit exceeded",
+          retryAfter: `${retryAfter} seconds`
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": retryAfter.toString(),
+            ...corsHeaders
+          }
+        }
+      );
+    }
+    
     if (req.method === "OPTIONS") {
+      logRequest(req, startTime, 204);
       return new Response(null, { status: 204, headers: corsHeaders });
     }
     
-    // Route handling
-    if (req.method === "POST" && url.pathname === "/extract-resume") {
-      return await resumeExtractHandler(req);
-    }
-    
-    if (req.method === "POST" && url.pathname === "/extract-jd") {
-      return await jdExtractHandler(req);
-    }
-    
-    if (req.method === "POST" && url.pathname === "/generate-mcq") {
-      return await mcqGenerateHandler(req);
-    }
-    
-    if (req.method === "POST" && url.pathname === "/match") {
-      return await jobMatchHandler(req);
-    }
-    
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: "Route not found",
-        availableRoutes: [
-          "POST /extract-resume - Extract data from a resume PDF",
-          "POST /extract-jd - Extract data from a job description PDF",
-          "POST /generate-mcq - Generate MCQ questions based on a job description and resume",
-          "POST /match - Match a job description with a resume"
-        ]
-      }),
-      {
-        status: 404,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders
-        }
+    try {
+      // Route handling
+      if (req.method === "POST" && url.pathname === "/extract-resume") {
+        const response = await resumeExtractHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
       }
-    );
+      
+      if (req.method === "POST" && url.pathname === "/extract-jd") {
+        const response = await jdExtractHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
+      }
+      
+      if (req.method === "POST" && url.pathname === "/generate-mcq") {
+        const response = await mcqGenerateHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
+      }
+      
+      if (req.method === "POST" && url.pathname === "/match") {
+        const response = await jobMatchHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
+      }
+      
+      const notFoundResponse = new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Route not found",
+          availableRoutes: [
+            "POST /extract-resume - Extract data from a resume PDF",
+            "POST /extract-jd - Extract data from a job description PDF",
+            "POST /generate-mcq - Generate MCQ questions based on a job description and resume",
+            "POST /match - Match a job description with resume(s) (supports multiple resumes via 'resumes' field)"
+          ]
+        }),
+        {
+          status: 404,
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        }
+      );
+      
+      logRequest(req, startTime, 404);
+      return notFoundResponse;
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Unhandled error for ${req.method} ${url.pathname}:`, error);
+      
+      const errorResponse = new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Internal server error"
+        }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders
+          }
+        }
+      );
+      
+      logRequest(req, startTime, 500);
+      return errorResponse;
+    }
   },
   port: Number(PORT),
 });
