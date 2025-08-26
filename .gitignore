@@ -1,0 +1,12 @@
+# Bun server related ignores
+node_modules/
+bun.lockb
+.env
+dist/
+.cache/
+*.log
+.DS_Store
+.idea/
+.vscode/
+out/
+coverage/
