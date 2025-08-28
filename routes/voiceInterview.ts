@@ -1,5 +1,4 @@
 import { extractJobDescriptionData } from '../services/jdExtractor';
-import { extractResumeData } from '../services/resumeExtractor';
 import { generateVoiceInterviewQuestions } from '../services/voiceInterviewGenerator';
 
 export async function voiceInterviewHandler(req: Request): Promise<Response> {
@@ -8,24 +7,6 @@ export async function voiceInterviewHandler(req: Request): Promise<Response> {
 
     // Prefer new keys
     const jdFile = (formData.get('job_description') || formData.get('jobDescription')) as unknown;
-
-    // Use 'resumes' for single or multiple; take the first file if multiple
-    let resumeFile: File | null = null;
-    const resumesList = formData.getAll('resumes');
-    if (resumesList && resumesList.length > 0) {
-      const first = resumesList.find((i) => i instanceof File);
-      if (first && first instanceof File) {
-        resumeFile = first;
-      }
-    }
-    // Backward compatibility: fall back to 'resume'
-    if (!resumeFile) {
-      const legacy = formData.getAll('resume');
-      const firstLegacy = legacy.find((i) => i instanceof File);
-      if (firstLegacy && firstLegacy instanceof File) {
-        resumeFile = firstLegacy;
-      }
-    }
 
     if (!jdFile || !(jdFile instanceof File)) {
       return new Response(
@@ -37,23 +18,9 @@ export async function voiceInterviewHandler(req: Request): Promise<Response> {
       );
     }
 
-    if (!resumeFile || !(resumeFile instanceof File)) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'No resume file provided or invalid file (expected key: resumes)'
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
     const jdBuffer = await jdFile.arrayBuffer();
-    const resumeBuffer = await resumeFile.arrayBuffer();
-
     const jdData = await extractJobDescriptionData(Buffer.from(jdBuffer));
-    const resumeData = await extractResumeData(Buffer.from(resumeBuffer));
-
-    const questions = await generateVoiceInterviewQuestions(jdData, resumeData);
+    const questions = await generateVoiceInterviewQuestions(jdData);
 
     const payload = {
       "POST Response": [

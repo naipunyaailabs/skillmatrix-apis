@@ -1,6 +1,5 @@
 import { groqChatCompletion } from '../utils/groqClient';
 import { JobDescriptionData } from './jdExtractor';
-import { ResumeData } from './resumeExtractor';
 
 export interface VoiceQuestion {
   question: string;
@@ -38,8 +37,7 @@ function extractJsonFromResponse(response: string): any {
 }
 
 export async function generateVoiceInterviewQuestions(
-  jobDescription: JobDescriptionData,
-  resume: ResumeData
+  jobDescription: JobDescriptionData
 ): Promise<VoiceQuestion[]> {
   const context = `
 Job Title: ${jobDescription.title}
@@ -49,11 +47,6 @@ Location: ${jobDescription.location}
 Requirements:\n${jobDescription.requirements.join('\n')}
 Responsibilities:\n${jobDescription.responsibilities.join('\n')}
 Skills:\n${jobDescription.skills.join('\n')}
-
-Candidate: ${resume.name}
-Candidate Skills:\n${resume.skills.join('\n')}
-Experience:\n${Array.isArray(resume.experience) ? JSON.stringify(resume.experience, null, 2) : ''}
-Certifications:\n${resume.certifications.join('\n')}
 `;
 
   const response = await groqChatCompletion(
