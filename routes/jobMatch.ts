@@ -40,44 +40,32 @@ function addToQueue(task: () => Promise<any>) {
 export async function jobMatchHandler(req: Request): Promise<Response> {
   try {
     const formData = await req.formData();
-    const jdFile = formData.get('jobDescription');
+    // Prefer new key: job_description (fallback to jobDescription for backward compatibility)
+    const jdFile = (formData.get('job_description') || formData.get('jobDescription')) as unknown;
     
     // Log all form data keys for debugging
     console.log('[JobMatchHandler] Form data keys:', Array.from(formData.keys()));
     
-    // Handle both single resume and multiple resumes
+    // Use 'resumes' for all cases (single and multiple). Fallback to 'resume' for backward compatibility
     const resumeFiles: File[] = [];
-    
-    // Check for single resume (backward compatibility)
-    const singleResume = formData.get('resume');
-    if (singleResume && singleResume instanceof File) {
-      console.log('[JobMatchHandler] Found single resume in "resume" field');
-      resumeFiles.push(singleResume);
-    }
-    
-    // Check for multiple resumes
-    const multipleResumes = formData.getAll('resumes');
-    console.log(`[JobMatchHandler] Found ${multipleResumes.length} items in 'resumes' field`);
-    
-    // Log details about each item in the resumes field
-    multipleResumes.forEach((item, index) => {
+    const resumesFromNewKey = formData.getAll('resumes');
+    console.log(`[JobMatchHandler] Found ${resumesFromNewKey.length} item(s) in 'resumes' field`);
+    resumesFromNewKey.forEach((item, index) => {
       if (item instanceof File) {
-        console.log(`[JobMatchHandler] Resume ${index + 1}: ${item.name} (${item.size} bytes)`);
+        console.log(`[JobMatchHandler] Resumes[${index}]: ${item.name} (${item.size} bytes)`);
         resumeFiles.push(item);
       } else {
-        console.log(`[JobMatchHandler] Item ${index + 1} in 'resumes' is not a File:`, typeof item);
+        console.log(`[JobMatchHandler] Item ${index} in 'resumes' is not a File:`, typeof item);
       }
     });
     
-    console.log(`[JobMatchHandler] Total resume files to process: ${resumeFiles.length}`);
-    
-    // If we still don't have any resumes, check if there might be resumes in the 'resume' field as an array
+    // Backward compatibility: single 'resume' or multiple 'resume'
     if (resumeFiles.length === 0) {
-      const altResumes = formData.getAll('resume');
-      console.log(`[JobMatchHandler] Checking alternative 'resume' field, found ${altResumes.length} items`);
-      altResumes.forEach((item, index) => {
+      const legacyResumes = formData.getAll('resume');
+      console.log(`[JobMatchHandler] Falling back to 'resume' field, found ${legacyResumes.length} item(s)`);
+      legacyResumes.forEach((item, index) => {
         if (item instanceof File) {
-          console.log(`[JobMatchHandler] Alt resume ${index + 1}: ${item.name} (${item.size} bytes)`);
+          console.log(`[JobMatchHandler] Legacy resume[${index}]: ${item.name} (${item.size} bytes)`);
           resumeFiles.push(item);
         }
       });
