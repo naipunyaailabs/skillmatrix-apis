@@ -216,6 +216,8 @@ export interface MatchResult {
   candidateDomainExperienceYears?: number;
   industrialExperienceDetails?: string;
   domainExperienceDetails?: string;
+  matchedSkillsPercentage?: number;
+  unmatchedSkillsPercentage?: number;
 }
 
 export async function matchJobWithResume(
@@ -301,6 +303,8 @@ ${resume.certifications.join('\n')}
         const totalSkills = jobDescription.skills.length;
         const matchedSkills = jobDescription.skills.filter(skill => resume.skills.includes(skill)).length;
         const matchingScore = totalSkills > 0 ? Math.round((matchedSkills / totalSkills) * 100) : 70;
+        const matchedSkillsPercentage = totalSkills > 0 ? Math.round((matchedSkills / totalSkills) * 100) : 0;
+        const unmatchedSkillsPercentage = totalSkills > 0 ? Math.round(((totalSkills - matchedSkills) / totalSkills) * 100) : 0;
         
         // Create the proper structure
         matchResult = {
@@ -325,6 +329,8 @@ ${resume.certifications.join('\n')}
             "Matching Score": matchingScore,
             "Unmatched Skills": jobDescription.skills.filter(skill => !resume.skills.includes(skill)),
             "Matched Skills": jobDescription.skills.filter(skill => resume.skills.includes(skill)),
+            "Matched Skills Percentage": matchedSkillsPercentage,
+            "Unmatched Skills Percentage": unmatchedSkillsPercentage,
             "Strengths": [`Candidate has ${resume.totalIndustrialExperienceYears || 0} years of relevant experience`],
             "Recommendations": [
               `Consider acquiring skills in: ${jobDescription.skills.filter(skill => !resume.skills.includes(skill)).join(', ') || 'N/A'}`,
@@ -357,7 +363,9 @@ ${resume.certifications.join('\n')}
               `, which meets the required ${jobDescription.requiredIndustrialExperienceYears} years.` : 
               `, which falls short of the required ${jobDescription.requiredIndustrialExperienceYears} years.`) : 
             "."}`,
-          domainExperienceDetails: `${resume.totalDomainExperienceYears || 0} years`
+          domainExperienceDetails: `${resume.totalDomainExperienceYears || 0} years`,
+          matchedSkillsPercentage,
+          unmatchedSkillsPercentage
         };
       }
       
@@ -376,6 +384,12 @@ ${resume.certifications.join('\n')}
       matchResult.requiredDomainExperienceYears = matchResult.requiredDomainExperienceYears || jobDescription.requiredDomainExperienceYears || 0;
       matchResult.candidateIndustrialExperienceYears = matchResult.candidateIndustrialExperienceYears || resume.totalIndustrialExperienceYears || 0;
       matchResult.candidateDomainExperienceYears = matchResult.candidateDomainExperienceYears || resume.totalDomainExperienceYears || 0;
+      if (matchResult.matchedSkillsPercentage === undefined || matchResult.unmatchedSkillsPercentage === undefined) {
+        const totalSkills = jobDescription.skills.length;
+        const matchedCount = (matchResult.matchedSkills || []).length;
+        matchResult.matchedSkillsPercentage = totalSkills > 0 ? Math.round((matchedCount / totalSkills) * 100) : 0;
+        matchResult.unmatchedSkillsPercentage = totalSkills > 0 ? Math.round(((totalSkills - matchedCount) / totalSkills) * 100) : 0;
+      }
       
       console.log('[JobMatcher] Match result processed successfully');
       return matchResult;
@@ -389,6 +403,8 @@ ${resume.certifications.join('\n')}
       const totalSkills = jobDescription.skills.length;
       const matchedSkills = jobDescription.skills.filter(skill => resume.skills.includes(skill)).length;
       const matchingScore = totalSkills > 0 ? Math.round((matchedSkills / totalSkills) * 100) : 70;
+      const matchedSkillsPercentage = totalSkills > 0 ? Math.round((matchedSkills / totalSkills) * 100) : 0;
+      const unmatchedSkillsPercentage = totalSkills > 0 ? Math.round(((totalSkills - matchedSkills) / totalSkills) * 100) : 0;
       
       const matchResult: MatchResult = {
         Id: id,
@@ -412,6 +428,8 @@ ${resume.certifications.join('\n')}
           "Matching Score": matchingScore,
           "Unmatched Skills": jobDescription.skills.filter(skill => !resume.skills.includes(skill)),
           "Matched Skills": jobDescription.skills.filter(skill => resume.skills.includes(skill)),
+          "Matched Skills Percentage": matchedSkillsPercentage,
+          "Unmatched Skills Percentage": unmatchedSkillsPercentage,
           "Strengths": [`Candidate has ${resume.totalIndustrialExperienceYears || 0} years of relevant experience`],
           "Recommendations": [
             `Consider acquiring skills in: ${jobDescription.skills.filter(skill => !resume.skills.includes(skill)).join(', ') || 'N/A'}`,
