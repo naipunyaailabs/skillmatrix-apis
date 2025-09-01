@@ -4,6 +4,7 @@ import { resumeExtractHandler } from "./routes/resumeExtract";
 import { jdExtractHandler } from "./routes/jdExtract";
 import { mcqGenerateHandler } from "./routes/mcqGenerate";
 import { jobMatchHandler } from "./routes/jobMatch";
+import { voiceInterviewHandler } from "./routes/voiceInterview";
 
 // Load environment variables
 config();
@@ -106,6 +107,12 @@ const server = serve({
         return response;
       }
       
+      if (req.method === "POST" && url.pathname === "/generate-voice-questions") {
+        const response = await voiceInterviewHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
+      }
+      
       if (req.method === "POST" && url.pathname === "/match") {
         const response = await jobMatchHandler(req);
         logRequest(req, startTime, response.status);
@@ -120,6 +127,7 @@ const server = serve({
             "POST /extract-resume - Extract data from a resume PDF",
             "POST /extract-jd - Extract data from a job description PDF",
             "POST /generate-mcq - Generate MCQ questions based on a job description and resume",
+            "POST /generate-voice-questions - Generate voice interview questions based on a job description (JD-only)",
             "POST /match - Match a job description with one or more resumes (supports both 'resume' for single file and 'resumes' for multiple files)"
           ]
         }),

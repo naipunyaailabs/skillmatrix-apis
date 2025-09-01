@@ -156,6 +156,16 @@ export async function jobMatchHandler(req: Request): Promise<Response> {
               "Matching Score": matchResult.matchScore || 0,
               "Unmatched Skills": matchResult.unmatchedSkills || [],
               "Matched Skills": matchResult.matchedSkills || [],
+              "Matched Skills Percentage": matchResult.matchedSkillsPercentage ?? (function(){
+                const total = (matchResult.matchedSkills || []).length + (matchResult.unmatchedSkills || []).length;
+                const matched = (matchResult.matchedSkills || []).length;
+                return total > 0 ? Math.round((matched / total) * 100) : 0;
+              })(),
+              "Unmatched Skills Percentage": matchResult.unmatchedSkillsPercentage ?? (function(){
+                const total = (matchResult.matchedSkills || []).length + (matchResult.unmatchedSkills || []).length;
+                const unmatched = (matchResult.unmatchedSkills || []).length;
+                return total > 0 ? Math.round((unmatched / total) * 100) : 0;
+              })(),
               "Strengths": matchResult.strengths || [],
               "Recommendations": matchResult.recommendations || [],
               "Required Industrial Experience": `${matchResult.requiredIndustrialExperienceYears || 0} years`,
