@@ -37,11 +37,9 @@ export async function answerEvaluateHandler(req: Request): Promise<Response> {
     // Evaluate the answer
     const evaluationScores: EvaluationScores = await evaluateAnswer(body);
     
+    // Return just the evaluation scores object directly
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        data: evaluationScores
-      }),
+      JSON.stringify(evaluationScores),
       {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
