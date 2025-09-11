@@ -1,4 +1,6 @@
 import { groqChatCompletion } from '../utils/groqClient';
+import { getLLMCache, setLLMCache } from '../utils/llmCache';
+import { createHash } from 'crypto';
 
 export interface EvaluationScores {
   Authentic: number;
@@ -51,6 +53,18 @@ Authentic, Clarity, Fluency, Focused, NoFillers, Professionalism, Relevance, Str
 
 export async function evaluateAnswer(input: EvaluationInput): Promise<EvaluationScores> {
   try {
+    // Create a cache key based on the input
+    const cacheKey = `answer_eval_${createHash('md5')
+      .update(`${input.question}_${input.answer}`)
+      .digest('hex')}`;
+
+    // Try to get result from cache first
+    const cachedResult = await getLLMCache(cacheKey);
+    if (cachedResult) {
+      console.log('[AnswerEvaluator] Returning cached result');
+      return cachedResult as EvaluationScores;
+    }
+
     const userPrompt = EVALUATION_USER_PROMPT
       .replace('{question}', input.question)
       .replace('{answer}', input.answer);
@@ -120,6 +134,9 @@ export async function evaluateAnswer(input: EvaluationInput): Promise<Evaluation
         const totalScore = scoreKeys.reduce((sum, key) => sum + fullScores[key], 0);
         fullScores.Total = Math.round((totalScore / scoreKeys.length) * 100) / 100; // Round to 2 decimal places
       }
+      
+      // Cache the result for 12 hours
+      await setLLMCache(cacheKey, fullScores, 1000 * 60 * 60 * 12);
       
       return fullScores;
     } catch (parseError) {

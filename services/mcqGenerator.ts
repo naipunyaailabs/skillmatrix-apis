@@ -1,6 +1,8 @@
 import { groqChatCompletion } from '../utils/groqClient';
 import { JobDescriptionData } from './jdExtractor';
 import { ResumeData } from './resumeExtractor';
+import { getLLMCache, setLLMCache } from '../utils/llmCache';
+import { createHash } from 'crypto';
 
 export interface MCQQuestion {
   question: string;
@@ -129,6 +131,18 @@ export async function generateMCQQuestions(
   resume: ResumeData
 ): Promise<MCQQuestion[]> {
   try {
+    // Create a cache key based on the job description and resume data
+    const cacheKey = `mcq_questions_${createHash('md5')
+      .update(JSON.stringify({ job: jobDescription, resume: resume }))
+      .digest('hex')}`;
+
+    // Try to get result from cache first
+    const cachedResult = await getLLMCache(cacheKey);
+    if (cachedResult) {
+      console.log('[MCQGenerator] Returning cached result');
+      return cachedResult as MCQQuestion[];
+    }
+
     // Create a comprehensive prompt with job description and resume data
     const prompt = `
 Job Title: ${jobDescription.title}
@@ -174,7 +188,12 @@ ${resume.certifications.join('\n')}
     // Parse the JSON response
     try {
       const result = extractJsonFromResponse(response);
-      return result.questions || [];
+      const questions = result.questions || [];
+      
+      // Cache the result for 24 hours
+      await setLLMCache(cacheKey, questions, 1000 * 60 * 60 * 24);
+      
+      return questions;
     } catch (parseError) {
       console.error('[MCQGenerator] Error parsing JSON response:', parseError);
       console.error('[MCQGenerator] Raw response:', response);

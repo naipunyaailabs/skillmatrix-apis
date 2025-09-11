@@ -6,11 +6,17 @@ import { mcqGenerateHandler } from "./routes/mcqGenerate";
 import { jobMatchHandler } from "./routes/jobMatch";
 import { voiceInterviewHandler } from "./routes/voiceInterview";
 import { answerEvaluateHandler } from "./routes/answerEvaluate";
+import { initializeRedisClient } from "./utils/redisClient";
 
 // Load environment variables
 config();
 
 const PORT = process.env.HR_TOOLS_PORT || 3001;
+
+// Initialize Redis client
+initializeRedisClient().catch(error => {
+  console.error('[Index] Failed to initialize Redis client:', error);
+});
 
 // Simple request logging
 function logRequest(req: Request, startTime: number, status: number) {

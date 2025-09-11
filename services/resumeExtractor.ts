@@ -1,5 +1,7 @@
 import { groqChatCompletion } from "../utils/groqClient";
 import { parsePDF } from "../utils/pdfParser";
+import { getLLMCache, setLLMCache } from "../utils/llmCache";
+import { createHash } from "crypto";
 
 // Interface for resume data
 export interface ResumeData {
@@ -429,6 +431,18 @@ function calculateTotalExperience(experience: any[]): number {
 
 export async function extractResumeData(buffer: Buffer): Promise<ResumeData> {
   try {
+    // Create a cache key based on the buffer content
+    const cacheKey = `resume_extract_${createHash('md5')
+      .update(buffer)
+      .digest('hex')}`;
+
+    // Try to get result from cache first
+    const cachedResult = await getLLMCache(cacheKey);
+    if (cachedResult) {
+      console.log('[ResumeExtractor] Returning cached result');
+      return cachedResult as ResumeData;
+    }
+
     // Parse PDF to extract text
     const text = await parsePDF(buffer);
     
@@ -489,6 +503,9 @@ export async function extractResumeData(buffer: Buffer): Promise<ResumeData> {
       });
       
       console.log('[ResumeExtractor] Final totalIndustrialExperienceYears:', resumeData.totalIndustrialExperienceYears);
+      
+      // Cache the result for 24 hours
+      await setLLMCache(cacheKey, resumeData, 1000 * 60 * 60 * 24);
       
       return resumeData as ResumeData;
     } catch (parseError) {

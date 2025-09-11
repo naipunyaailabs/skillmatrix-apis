@@ -1,5 +1,7 @@
 import { groqChatCompletion } from "../utils/groqClient";
 import { parsePDF } from "../utils/pdfParser";
+import { getLLMCache, setLLMCache } from "../utils/llmCache";
+import { createHash } from "crypto";
 
 // Interface for job description data
 export interface JobDescriptionData {
@@ -136,6 +138,18 @@ function extractJsonFromResponse(response: string): any {
 
 export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDescriptionData> {
   try {
+    // Create a cache key based on the buffer content
+    const cacheKey = `jd_extract_${createHash('md5')
+      .update(buffer)
+      .digest('hex')}`;
+
+    // Try to get result from cache first
+    const cachedResult = await getLLMCache(cacheKey);
+    if (cachedResult) {
+      console.log('[JDExtractor] Returning cached result');
+      return cachedResult as JobDescriptionData;
+    }
+
     // Parse PDF to extract text
     const text = await parsePDF(buffer);
     
@@ -178,6 +192,9 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
           jdData[field] = [];
         }
       });
+      
+      // Cache the result for 24 hours
+      await setLLMCache(cacheKey, jdData, 1000 * 60 * 60 * 24);
       
       return jdData as JobDescriptionData;
     } catch (parseError) {

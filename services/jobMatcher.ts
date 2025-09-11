@@ -1,6 +1,8 @@
 import { groqChatCompletion } from "../utils/groqClient";
 import { JobDescriptionData } from "./jdExtractor";
 import { ResumeData } from "./resumeExtractor";
+import { getLLMCache, setLLMCache } from "../utils/llmCache";
+import { createHash } from "crypto";
 
 const JOB_MATCHING_PROMPT = `You are an expert HR consultant specializing in job-resume matching analysis.
 Analyze the provided job description and resume, and provide a comprehensive matching analysis in the following JSON format:
@@ -81,7 +83,7 @@ function extractJsonFromResponse(response: string): any {
           const closeBrackets = (jsonString.match(/\]/g) || []).length;
           
           // Add missing closing brackets first
-          let missingBrackets = openBrackets - closeBrackets;
+          let missingBrackets = openBraces - closeBraces;
           while (missingBrackets > 0) {
             jsonString += "]";
             missingBrackets--;
@@ -198,6 +200,8 @@ export interface MatchResult {
     "Matching Score": number;
     "Unmatched Skills": string[];
     "Matched Skills": string[];
+    "Matched Skills Percentage"?: number;
+    "Unmatched Skills Percentage"?: number;
     Strengths: string[];
     Recommendations: string[];
     "Required Industrial Experience": string;
@@ -225,6 +229,18 @@ export async function matchJobWithResume(
   resume: ResumeData
 ): Promise<MatchResult> {
   try {
+    // Create a cache key based on the job description and resume data
+    const cacheKey = `job_match_${createHash('md5')
+      .update(JSON.stringify({ job: jobDescription, resume: resume }))
+      .digest('hex')}`;
+
+    // Try to get result from cache first
+    const cachedResult = await getLLMCache(cacheKey);
+    if (cachedResult) {
+      console.log('[JobMatcher] Returning cached result');
+      return cachedResult as MatchResult;
+    }
+
     // Create a comprehensive prompt with job description and resume data
     const prompt = `
 Job Title: ${jobDescription.title}
@@ -391,6 +407,9 @@ ${resume.certifications.join('\n')}
         matchResult.unmatchedSkillsPercentage = totalSkills > 0 ? Math.round(((totalSkills - matchedCount) / totalSkills) * 100) : 0;
       }
       
+      // Cache the result for 24 hours
+      await setLLMCache(cacheKey, matchResult, 1000 * 60 * 60 * 24);
+      
       console.log('[JobMatcher] Match result processed successfully');
       return matchResult;
     } catch (parseError) {
@@ -464,6 +483,9 @@ ${resume.certifications.join('\n')}
           "."}`,
         domainExperienceDetails: `${resume.totalDomainExperienceYears || 0} years`
       };
+      
+      // Cache the fallback result
+      await setLLMCache(cacheKey, matchResult, 1000 * 60 * 60 * 24);
       
       console.log('[JobMatcher] Using fallback implementation due to parsing error');
       return matchResult;

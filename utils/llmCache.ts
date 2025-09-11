@@ -1,23 +1,21 @@
-// Simple in-memory cache for LLM calls (prod: use Redis)
-// Key: string (hash of input/prompt/type)
-// Value: { result: any, expires: number }
+import { setCache, getCache } from './redisClient';
 
-const cache = new Map<string, { result: any, expires: number }>();
 const DEFAULT_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
 
-export function setLLMCache(key: string, result: any, ttl: number = DEFAULT_TTL_MS) {
-  cache.set(key, { result, expires: Date.now() + ttl });
+export async function setLLMCache(key: string, result: any, ttl: number = DEFAULT_TTL_MS) {
+  // Convert milliseconds to seconds for Redis
+  const ttlSeconds = Math.floor(ttl / 1000);
+  await setCache(key, result, ttlSeconds);
 }
 
-export function getLLMCache(key: string): any | null {
-  const entry = cache.get(key);
-  if (entry && entry.expires > Date.now()) {
-    return entry.result;
-  }
-  if (entry) cache.delete(key);
-  return null;
+export async function getLLMCache(key: string): Promise<any | null> {
+  return await getCache(key);
 }
 
-export function clearLLMCache() {
-  cache.clear();
+// Note: Redis automatically handles expiration, so we don't need a clear function
+// But we'll keep this for compatibility
+export async function clearLLMCache() {
+  // In a Redis implementation, we might want to clear only LLM cache entries
+  // For now, we'll leave this as a no-op since we don't have a way to selectively clear
+  console.log('[LLMCache] Clear operation not implemented for Redis - use redisClient.clearCache() to clear all');
 }
