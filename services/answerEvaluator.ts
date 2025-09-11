@@ -111,7 +111,7 @@ export async function evaluateAnswer(input: EvaluationInput): Promise<Evaluation
       // Calculate total scores if not already present
       if (!('overall Score(Total Sum)' in fullScores)) {
         const totalSum = requiredFields.reduce((sum, field) => sum + fullScores[field], 0);
-        fullScores["overall Score(Total Sum)"] = totalSum;
+        (fullScores as any)["overall Score(Total Sum)"] = totalSum;
       }
       
       // Calculate normalized weighted score (Total)
