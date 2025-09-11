@@ -8,6 +8,7 @@ AI-powered HR tools for resume parsing, job description analysis, and candidate 
 - **Job Description Extraction**: Extract structured data from job description PDFs
 - **MCQ Generation**: Generate multiple-choice questions based on job descriptions and resumes
 - **Job Matching**: Match job descriptions with one or more resumes to determine compatibility
+- **Answer Evaluation**: Evaluate text answers for career-related questions
 
 ## Installation
 
@@ -207,6 +208,41 @@ Match a job description with one or more resumes to determine compatibility.
     }
   ],
   "errors": [] // Present only if there were errors processing any resumes
+}
+```
+
+### Answer Evaluation
+```
+POST /evaluate
+```
+Evaluate a text answer for career-related questions.
+
+**Request:**
+- JSON body with `question` and `answer` fields:
+```json
+{
+  "question": "Tell me about a time when you faced a challenging problem at work and how you solved it.",
+  "answer": "In my previous role, I encountered a situation where our team was falling behind on a critical project deadline due to unclear requirements..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "Authentic": 8,
+    "Clarity": 9,
+    "Fluency": 7,
+    "Focused": 8,
+    "NoFillers": 9,
+    "Professionalism": 8,
+    "Relevance": 9,
+    "StructuredAnswers": 8,
+    "Total": 8.22,
+    "UniqueQualities": 7,
+    "overall Score(Total Sum)": 74
+  }
 }
 ```
 
