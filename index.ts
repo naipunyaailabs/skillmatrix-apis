@@ -6,6 +6,7 @@ import { mcqGenerateHandler } from "./routes/mcqGenerate";
 import { jobMatchHandler } from "./routes/jobMatch";
 import { voiceInterviewHandler } from "./routes/voiceInterview";
 import { answerEvaluateHandler } from "./routes/answerEvaluate";
+import { audioEvaluateHandler } from "./routes/audioEvaluate";
 import { initializeRedisClient } from "./utils/redisClient";
 
 // Load environment variables
@@ -131,6 +132,12 @@ const server = serve({
         logRequest(req, startTime, response.status);
         return response;
       }
+      
+      if (req.method === "POST" && url.pathname === "/evaluate-audio") {
+        const response = await audioEvaluateHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
+      }
 
       const notFoundResponse = new Response(
         JSON.stringify({ 
@@ -142,7 +149,8 @@ const server = serve({
             "POST /generate-mcq - Generate MCQ questions based on a job description and resume",
             "POST /generate-voice-questions - Generate voice interview questions based on a job description (JD-only)",
             "POST /match - Match a job description with one or more resumes (supports both 'resume' for single file and 'resumes' for multiple files)",
-            "POST /evaluate - Evaluate a text answer for career-related questions"
+            "POST /evaluate - Evaluate a text answer for career-related questions",
+            "POST /evaluate-audio - Evaluate audio files for emotion and tone analysis"
           ]
         }),
         {

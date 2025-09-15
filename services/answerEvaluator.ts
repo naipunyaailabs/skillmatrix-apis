@@ -11,9 +11,9 @@ export interface EvaluationScores {
   Professionalism: number;
   Relevance: number;
   StructuredAnswers: number;
-  Total: number;
   UniqueQualities: number;
-  "overall Score(Total Sum)": number;
+  total_average: number;
+  total_overall_score: number;
 }
 
 export interface EvaluationInput {
@@ -42,14 +42,14 @@ For each criterion, provide a score from 1-10 where:
 9-10: Excellent
 
 Return your response as a JSON object with the exact keys specified in the output format. Do not include any explanations or additional text, only the JSON object with these exact keys:
-Authentic, Clarity, Fluency, Focused, NoFillers, Professionalism, Relevance, StructuredAnswers, UniqueQualities`;
+Authentic, Clarity, Fluency, Focused, NoFillers, Professionalism, Relevance, StructuredAnswers, UniqueQualities, total_average, total_overall_score`;
 
 const EVALUATION_USER_PROMPT = `Question: {question}
 
 Candidate's Answer: {answer}
 
 Please evaluate this response according to the criteria provided and return ONLY a JSON object with the scores for each category. Remember to score each category from 1-10. Do not include any explanations or additional text, only the JSON object with these exact keys:
-Authentic, Clarity, Fluency, Focused, NoFillers, Professionalism, Relevance, StructuredAnswers, UniqueQualities`;
+Authentic, Clarity, Fluency, Focused, NoFillers, Professionalism, Relevance, StructuredAnswers, UniqueQualities, total_average, total_overall_score`;
 
 export async function evaluateAnswer(input: EvaluationInput): Promise<EvaluationScores> {
   try {
@@ -109,31 +109,34 @@ export async function evaluateAnswer(input: EvaluationInput): Promise<Evaluation
       // Ensure all required fields are present
       const requiredFields: (keyof EvaluationScores)[] = [
         'Authentic', 'Clarity', 'Fluency', 'Focused', 'NoFillers',
-        'Professionalism', 'Relevance', 'StructuredAnswers', 'UniqueQualities'
+        'Professionalism', 'Relevance', 'StructuredAnswers', 'UniqueQualities',
+        'total_average', 'total_overall_score'
       ];
       
       // Check if all required fields are present
       for (const field of requiredFields) {
         if (typeof scores[field] !== 'number') {
-          throw new Error(`Missing or invalid field: ${field}`);
+          // If the required fields are missing, calculate them
+          if (field === 'total_average') {
+            const sumOfScores = [
+              'Authentic', 'Clarity', 'Fluency', 'Focused', 'NoFillers',
+              'Professionalism', 'Relevance', 'StructuredAnswers', 'UniqueQualities'
+            ].reduce((sum, key) => sum + (scores[key as keyof EvaluationScores] as number || 0), 0);
+            scores.total_average = Math.round((sumOfScores / 9) * 100) / 100;
+          } else if (field === 'total_overall_score') {
+            const sumOfScores = [
+              'Authentic', 'Clarity', 'Fluency', 'Focused', 'NoFillers',
+              'Professionalism', 'Relevance', 'StructuredAnswers', 'UniqueQualities'
+            ].reduce((sum, key) => sum + (scores[key as keyof EvaluationScores] as number || 0), 0);
+            scores.total_overall_score = sumOfScores;
+          } else {
+            throw new Error(`Missing or invalid field: ${field}`);
+          }
         }
       }
       
       // Cast to full EvaluationScores type
       const fullScores = scores as EvaluationScores;
-      
-      // Calculate total scores if not already present
-      if (!('overall Score(Total Sum)' in fullScores)) {
-        const totalSum = requiredFields.reduce((sum, field) => sum + fullScores[field], 0);
-        (fullScores as any)["overall Score(Total Sum)"] = totalSum;
-      }
-      
-      // Calculate normalized weighted score (Total)
-      if (typeof fullScores.Total !== 'number') {
-        const scoreKeys = requiredFields;
-        const totalScore = scoreKeys.reduce((sum, key) => sum + fullScores[key], 0);
-        fullScores.Total = Math.round((totalScore / scoreKeys.length) * 100) / 100; // Round to 2 decimal places
-      }
       
       // Cache the result for 12 hours
       await setLLMCache(cacheKey, fullScores, 1000 * 60 * 60 * 12);
