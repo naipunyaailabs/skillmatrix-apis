@@ -14,6 +14,21 @@ export interface MCQQuestion {
 const MCQ_GENERATION_PROMPT = `You are an expert assessment creator specializing in generating multiple-choice questions.
 Based on the provided job description and resume, create 10 high-quality MCQ questions that test knowledge and skills relevant to the position.
 
+MANDATORY REQUIREMENTS - You MUST include questions covering ALL of the following topics:
+1. Whether the candidate has any special needs
+2. Candidate's self-assessed strengths
+3. Problem-solving ability
+4. Assessment of emotional quotient (EQ)
+5. Authorization to work in the country
+6. Why should we hire you?
+
+In addition to these mandatory questions, you may include questions about:
+- Technical skills relevant to the position
+- Experience and qualifications
+- Behavioral competencies
+- Company knowledge
+- Role-specific scenarios
+
 Return ONLY the JSON object in the following format:
 {
   "questions": [

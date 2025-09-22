@@ -106,33 +106,40 @@ export async function evaluateAnswer(input: EvaluationInput): Promise<Evaluation
         delete scores.Focus;
       }
       
+      // Handle the old schema fields if present
+      if ('Total' in scores && !('total_average' in scores)) {
+        scores.total_average = scores.Total as number;
+        delete scores.Total;
+      }
+      
+      if ('overall Score(Total Sum)' in scores && !('total_overall_score' in scores)) {
+        scores.total_overall_score = scores['overall Score(Total Sum)'] as number;
+        delete scores['overall Score(Total Sum)'];
+      }
+      
       // Ensure all required fields are present
-      const requiredFields: (keyof EvaluationScores)[] = [
+      const mainFields: (keyof EvaluationScores)[] = [
         'Authentic', 'Clarity', 'Fluency', 'Focused', 'NoFillers',
-        'Professionalism', 'Relevance', 'StructuredAnswers', 'UniqueQualities',
-        'total_average', 'total_overall_score'
+        'Professionalism', 'Relevance', 'StructuredAnswers', 'UniqueQualities'
       ];
       
-      // Check if all required fields are present
-      for (const field of requiredFields) {
+      // Check if main fields are present
+      for (const field of mainFields) {
         if (typeof scores[field] !== 'number') {
-          // If the required fields are missing, calculate them
-          if (field === 'total_average') {
-            const sumOfScores = [
-              'Authentic', 'Clarity', 'Fluency', 'Focused', 'NoFillers',
-              'Professionalism', 'Relevance', 'StructuredAnswers', 'UniqueQualities'
-            ].reduce((sum, key) => sum + (scores[key as keyof EvaluationScores] as number || 0), 0);
-            scores.total_average = Math.round((sumOfScores / 9) * 100) / 100;
-          } else if (field === 'total_overall_score') {
-            const sumOfScores = [
-              'Authentic', 'Clarity', 'Fluency', 'Focused', 'NoFillers',
-              'Professionalism', 'Relevance', 'StructuredAnswers', 'UniqueQualities'
-            ].reduce((sum, key) => sum + (scores[key as keyof EvaluationScores] as number || 0), 0);
-            scores.total_overall_score = sumOfScores;
-          } else {
-            throw new Error(`Missing or invalid field: ${field}`);
-          }
+          throw new Error(`Missing or invalid field: ${field}`);
         }
+      }
+      
+      // Calculate total_average if missing
+      if (typeof scores.total_average !== 'number') {
+        const sumOfScores = mainFields.reduce((sum, key) => sum + (scores[key] as number), 0);
+        scores.total_average = Math.round((sumOfScores / mainFields.length) * 100) / 100;
+      }
+      
+      // Calculate total_overall_score if missing
+      if (typeof scores.total_overall_score !== 'number') {
+        const sumOfScores = mainFields.reduce((sum, key) => sum + (scores[key] as number), 0);
+        scores.total_overall_score = sumOfScores;
       }
       
       // Cast to full EvaluationScores type

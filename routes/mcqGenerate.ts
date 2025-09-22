@@ -66,7 +66,8 @@ export async function mcqGenerateHandler(req: Request): Promise<Response> {
     const transformedQuestions = (questions || []).map(q => ({
       question: q.question,
       options: q.options,
-      answer: (q as any).answer ?? q.correctAnswer
+      answer: (q as any).answer ?? q.correctAnswer,
+      explanation: q.explanation // Include the explanation field
     }));
     
     const payload = {

@@ -239,12 +239,112 @@ Evaluate a text answer for career-related questions.
     "Professionalism": 8,
     "Relevance": 9,
     "StructuredAnswers": 8,
-    "Total": 8.22,
+    "total_average": 8.22,
     "UniqueQualities": 7,
-    "overall Score(Total Sum)": 74
+    "total_overall_score": 74
   }
 }
 ```
+
+### Multiple Job Matching
+```
+POST /match-multiple
+```
+Match multiple job descriptions with multiple resumes with intelligent caching and relevance filtering.
+
+**Features:**
+- Supports multiple JD files and multiple resume files
+- **Intelligent Relevance Filtering**: Only returns matches with score ≥ 60
+- **Role & Skillset Focus**: Prioritizes role alignment and technical skill matching
+- Automatic caching of extracted data (24-hour TTL)
+- Reuses previously extracted JDs and resumes if uploaded again
+- Smart matching result caching (12-hour TTL)
+- Reasonable limits to prevent system overload
+
+**Matching Criteria:**
+- **Minimum Score**: 60/100 (below 60 = irrelevant, filtered out)
+- **Role Relevance**: Candidate background alignment with job role
+- **Technical Skills**: Percentage match of required technical skills
+- **Experience Level**: Appropriate experience for role level
+- **Domain Expertise**: Relevant industry/domain experience
+
+**Request:**
+- Form data with:
+  - `job_descriptions` field for multiple JD PDF files (can be used multiple times)
+  - `resumes` field for multiple resume PDF files (can be used multiple times)
+
+**Limits:**
+- Maximum 10 JD files
+- Maximum 10 resume files  
+- Maximum 50 total combinations (JDs × resumes)
+
+**Response:**
+```json
+{
+  "success": true,
+  "summary": {
+    "totalJDs": 2,
+    "totalResumes": 3,
+    "totalCombinations": 6,
+    "relevantMatches": 3,
+    "filteredOut": 3,
+    "bestMatch": {
+      "jdTitle": "Senior Software Engineer",
+      "candidateName": "John Doe",
+      "matchScore": 92
+    },
+    "matchingCriteria": {
+      "minimumScore": 60,
+      "focusAreas": ["Role Relevance", "Skillset Matching", "Experience Alignment"],
+      "filteringEnabled": true
+    }
+  },
+  "matches": [
+    {
+      "jdIndex": 0,
+      "resumeIndex": 0,
+      "jdTitle": "Senior Software Engineer",
+      "candidateName": "John Doe",
+      "matchScore": 92,
+      "matchedSkills": ["JavaScript", "React", "Node.js"],
+      "unmatchedSkills": ["Python", "AWS"],
+      "strengths": ["5+ years experience", "Strong technical skills"],
+      "recommendations": ["Learn Python", "Get AWS certification"],
+      "detailedAnalysis": {
+        "relevantMatch": true,
+        "roleAlignment": {
+          "score": 90,
+          "assessment": "Excellent alignment with senior developer role"
+        },
+        "skillsetMatch": {
+          "technicalSkillsMatch": 85,
+          "matchedSkills": ["JavaScript", "React", "Node.js"],
+          "criticalMissingSkills": ["Python"],
+          "skillGapSeverity": "low"
+        },
+        "experienceAlignment": {
+          "levelMatch": "senior",
+          "yearsMatch": "6 years meets 5+ requirement",
+          "relevantExperience": "Strong full-stack development background"
+        }
+      }
+    }
+  ]
+}
+```
+
+**Key Benefits:**
+- **Quality over Quantity**: Only returns genuinely relevant matches
+- **Reduced Noise**: Filters out irrelevant combinations automatically
+- **Role-Focused**: Prioritizes role alignment over generic matching
+- **Skill-Centric**: Emphasizes technical skill compatibility
+- **Actionable Insights**: Provides specific recommendations for skill gaps
+
+**Filtering Examples:**
+- ✅ **Included**: Frontend Developer JD + Frontend Developer Resume (Score: 85)
+- ❌ **Filtered**: Data Scientist JD + Marketing Manager Resume (Score: 25)
+- ✅ **Included**: Senior Developer JD + Mid-level Developer Resume (Score: 72)
+- ❌ **Filtered**: Technical Writer JD + Software Engineer Resume (Score: 45)
 
 ## Technology Stack
 
