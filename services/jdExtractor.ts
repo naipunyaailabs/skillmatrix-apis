@@ -16,6 +16,22 @@ export interface JobDescriptionData {
   domainExperience: string[];
   requiredIndustrialExperienceYears: number;
   requiredDomainExperienceYears: number;
+  employmentType?: string; // Added field for employment type
+  department?: string; // Added field for department
+  description?: string; // Added field for full description
+}
+
+// New interface for the job posting format
+export interface JobDescriptionResponse {
+  title: string;
+  companyName: string;
+  location: string;
+  type: 'Full-Time' | 'Part-Time' | 'Contract' | 'Internship';
+  experience: string;
+  department: string;
+  skills: string;
+  salary: string;
+  description: string;
 }
 
 const JD_EXTRACTION_PROMPT = `You are an expert HR assistant specializing in extracting information from job descriptions.
@@ -31,10 +47,19 @@ Extract the key information from the job description and return ONLY the JSON ob
   "industrialExperience": ["List of required industrial experience"],
   "domainExperience": ["List of required domain experience"],
   "requiredIndustrialExperienceYears": "Required years of industrial experience as a number (e.g., if the job requires 3-5 years, use 3 as the minimum)",
-  "requiredDomainExperienceYears": "Required years of domain experience as a number"
+  "requiredDomainExperienceYears": "Required years of domain experience as a number",
+  "employmentType": "Type of employment (Full-Time, Part-Time, Contract, or Internship)",
+  "department": "Department name if mentioned",
+  "description": "Full job description text"
 }
 
 When extracting experience requirements, look for phrases like "years of experience", "minimum experience", "X+ years", etc. If a range is given (e.g., "3-5 years"), use the minimum value. If the requirement is vague (e.g., "experience preferred"), estimate a reasonable number or use 0 if not clearly specified.
+
+For employment type, look for keywords like:
+- Full-Time: "full time", "full-time", "permanent"
+- Part-Time: "part time", "part-time"
+- Contract: "contract", "contractual", "freelance"
+- Internship: "intern", "internship", "trainee"
 
 Return only the JSON object. Do not include any other text, markdown formatting, or explanations.`;
 
@@ -159,7 +184,7 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
       "You are an expert HR assistant specializing in extracting information from job descriptions.",
       `${JD_EXTRACTION_PROMPT}\n\nJob description text:\n${text.substring(0, 10000)}`,
       0.3, // Lower temperature for more focused extraction
-      1024 // Limit tokens as we're extracting structured data
+      1500 // Increased token limit to accommodate additional fields
     );
     
     // Parse the JSON response
@@ -206,4 +231,33 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
     console.error('[JDExtractor] Error:', error);
     throw new Error(`Failed to extract job description data: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+}
+
+// New function to transform JobDescriptionData to JobDescriptionResponse
+export function transformToJobDescriptionResponse(jdData: JobDescriptionData): JobDescriptionResponse {
+  // Map employment type
+  let employmentType: 'Full-Time' | 'Part-Time' | 'Contract' | 'Internship' = 'Full-Time'; // Default
+  
+  if (jdData.employmentType) {
+    const type = jdData.employmentType.toLowerCase();
+    if (type.includes('part')) {
+      employmentType = 'Part-Time';
+    } else if (type.includes('contract')) {
+      employmentType = 'Contract';
+    } else if (type.includes('intern')) {
+      employmentType = 'Internship';
+    }
+  }
+  
+  return {
+    title: jdData.title || '',
+    companyName: jdData.company || '',
+    location: jdData.location || '',
+    type: employmentType,
+    experience: jdData.requiredIndustrialExperienceYears ? `${jdData.requiredIndustrialExperienceYears}+ years` : '',
+    department: jdData.department || '',
+    skills: jdData.skills ? jdData.skills.join(', ') : '',
+    salary: jdData.salary || '',
+    description: jdData.description || (jdData.requirements ? jdData.requirements.join(' ') : '')
+  };
 }

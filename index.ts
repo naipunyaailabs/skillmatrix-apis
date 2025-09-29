@@ -8,6 +8,7 @@ import { voiceInterviewHandler } from "./routes/voiceInterview";
 import { answerEvaluateHandler } from "./routes/answerEvaluate";
 import { audioEvaluateHandler } from "./routes/audioEvaluate";
 import { multipleJobMatchHandler } from "./routes/multipleJobMatch";
+import { jdExtractorNewHandler } from "./routes/jdExtractorNew";
 import { initializeRedisClient } from "./utils/redisClient";
 
 // Load environment variables
@@ -110,6 +111,12 @@ const server = serve({
         return response;
       }
       
+      if (req.method === "POST" && url.pathname === "/extract-jd-new") {
+        const response = await jdExtractorNewHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
+      }
+
       if (req.method === "POST" && url.pathname === "/generate-mcq") {
         const response = await mcqGenerateHandler(req);
         logRequest(req, startTime, response.status);
@@ -153,6 +160,7 @@ const server = serve({
           availableRoutes: [
             "POST /extract-resume - Extract data from a resume PDF",
             "POST /extract-jd - Extract data from a job description PDF",
+            "POST /extract-jd-new - Extract job description data in job posting format",
             "POST /generate-mcq - Generate MCQ questions based on a job description and resume",
             "POST /generate-voice-questions - Generate voice interview questions based on a job description (JD-only)",
             "POST /match - Match a job description with one or more resumes (supports both 'resume' for single file and 'resumes' for multiple files)",
