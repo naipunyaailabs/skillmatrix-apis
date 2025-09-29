@@ -2,14 +2,59 @@ import { extractJobDescriptionData } from '../services/jdExtractor';
 
 export async function jdExtractHandler(req: Request): Promise<Response> {
   try {
-    const formData = await req.formData();
-    const file = formData.get('jobDescription');
-    
-    if (!file || !(file instanceof File)) {
+    // Check if the request has the correct content type for form data
+    const contentType = req.headers.get('content-type');
+    if (!contentType || !contentType.includes('multipart/form-data')) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'No job description file provided or invalid file' 
+          error: 'Invalid content type. Expected multipart/form-data'
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    let formData: FormData;
+    try {
+      formData = await req.formData();
+    } catch (formError) {
+      console.error('[JDExtractHandler] Form data parsing error:', formError);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Failed to parse form data. Ensure the request is sent with Content-Type: multipart/form-data',
+          details: formError instanceof Error ? formError.message : 'Unknown form parsing error'
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    const file = formData.get('jobDescription');
+    
+    if (!file) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'No job description file provided' 
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    if (!(file instanceof File)) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Invalid file provided. Expected a File object' 
         }),
         {
           status: 400,
