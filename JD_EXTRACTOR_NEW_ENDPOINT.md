@@ -12,11 +12,34 @@ POST /extract-jd-new
 
 The endpoint expects a multipart form data request with a `jobDescription` field containing a PDF file.
 
-Example using curl:
+### Using curl:
 ```bash
 curl -X POST http://localhost:3001/extract-jd-new \
   -F "jobDescription=@path/to/your/job-description.pdf" \
   -H "Content-Type: multipart/form-data"
+```
+
+### Using JavaScript (fetch):
+```javascript
+const formData = new FormData();
+formData.append('jobDescription', fileInput.files[0]);
+
+fetch('http://localhost:3001/extract-jd-new', {
+  method: 'POST',
+  body: formData
+})
+.then(response => response.json())
+.then(data => console.log(data));
+```
+
+### Using Python (requests):
+```python
+import requests
+
+with open('job-description.pdf', 'rb') as f:
+    files = {'jobDescription': f}
+    response = requests.post('http://localhost:3001/extract-jd-new', files=files)
+    print(response.json())
 ```
 
 ## Response Format
@@ -66,9 +89,12 @@ In case of an error, the endpoint will return a JSON response with the following
 ```
 
 Common error cases:
-- No file provided: "No job description file provided or invalid file"
+- Invalid content type: "Invalid content type. Expected multipart/form-data"
+- No file provided: "No job description file provided"
+- Invalid file: "Invalid file provided. Expected a File object"
 - Processing error: "Failed to extract job description data: ..."
 - JSON parsing error: "Failed to parse job description data from AI response"
+- Form data parsing error: "Failed to parse form data. Ensure the request is sent with Content-Type: multipart/form-data"
 
 ## Implementation Details
 
@@ -84,3 +110,28 @@ The transformation logic:
 7. Joins skills array with commas
 8. Maps salary directly
 9. Uses the full description if available, otherwise joins requirements
+
+## Troubleshooting
+
+If you're getting a "Can't decode form data from body because of incorrect MIME type/boundary" error:
+
+1. Ensure you're sending the request with `Content-Type: multipart/form-data` header
+2. Make sure you're using form data (not JSON) for the request body
+3. Verify that the file is being attached correctly to the `jobDescription` field
+4. Check that the file is a valid PDF
+
+### Correct usage examples:
+
+**Correct curl command:**
+```bash
+curl -X POST http://localhost:3001/extract-jd-new \
+  -F "jobDescription=@job-description.pdf"
+```
+
+**Incorrect curl command (will cause the error):**
+```bash
+# Don't do this - sending JSON instead of form data
+curl -X POST http://localhost:3001/extract-jd-new \
+  -H "Content-Type: application/json" \
+  -d '{"jobDescription": "file-content"}'
+```

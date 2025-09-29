@@ -36,7 +36,8 @@ export async function jdExtractorNewHandler(req: Request): Promise<Response> {
       );
     }
 
-    const file = formData.get('jobDescription');
+    // Changed field name from 'jobDescription' to 'job_description'
+    const file = formData.get('job_description');
     
     if (!file) {
       return new Response(
