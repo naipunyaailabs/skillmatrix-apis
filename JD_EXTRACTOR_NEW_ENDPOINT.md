@@ -10,19 +10,19 @@ POST /extract-jd-new
 
 ## Request Format
 
-The endpoint expects a multipart form data request with a `jobDescription` field containing a PDF file.
+The endpoint expects a multipart form data request with a `job_description` field containing a PDF file.
 
 ### Using curl:
 ```bash
 curl -X POST http://localhost:3001/extract-jd-new \
-  -F "jobDescription=@path/to/your/job-description.pdf" \
+  -F "job_description=@path/to/your/job-description.pdf" \
   -H "Content-Type: multipart/form-data"
 ```
 
 ### Using JavaScript (fetch):
 ```javascript
 const formData = new FormData();
-formData.append('jobDescription', fileInput.files[0]);
+formData.append('job_description', fileInput.files[0]);
 
 fetch('http://localhost:3001/extract-jd-new', {
   method: 'POST',
@@ -37,7 +37,7 @@ fetch('http://localhost:3001/extract-jd-new', {
 import requests
 
 with open('job-description.pdf', 'rb') as f:
-    files = {'jobDescription': f}
+    files = {'job_description': f}
     response = requests.post('http://localhost:3001/extract-jd-new', files=files)
     print(response.json())
 ```
@@ -117,7 +117,7 @@ If you're getting a "Can't decode form data from body because of incorrect MIME 
 
 1. Ensure you're sending the request with `Content-Type: multipart/form-data` header
 2. Make sure you're using form data (not JSON) for the request body
-3. Verify that the file is being attached correctly to the `jobDescription` field
+3. Verify that the file is being attached correctly to the `job_description` field (note the underscore)
 4. Check that the file is a valid PDF
 
 ### Correct usage examples:
@@ -125,7 +125,7 @@ If you're getting a "Can't decode form data from body because of incorrect MIME 
 **Correct curl command:**
 ```bash
 curl -X POST http://localhost:3001/extract-jd-new \
-  -F "jobDescription=@job-description.pdf"
+  -F "job_description=@job-description.pdf"
 ```
 
 **Incorrect curl command (will cause the error):**
@@ -133,5 +133,12 @@ curl -X POST http://localhost:3001/extract-jd-new \
 # Don't do this - sending JSON instead of form data
 curl -X POST http://localhost:3001/extract-jd-new \
   -H "Content-Type: application/json" \
-  -d '{"jobDescription": "file-content"}'
+  -d '{"job_description": "file-content"}'
+```
+
+**Also incorrect - using wrong field name:**
+```bash
+# Don't do this - using camelCase instead of underscore
+curl -X POST http://localhost:3001/extract-jd-new \
+  -F "jobDescription=@job-description.pdf"
 ```

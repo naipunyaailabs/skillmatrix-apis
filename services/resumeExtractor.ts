@@ -436,18 +436,55 @@ export async function extractResumeData(buffer: Buffer): Promise<ResumeData> {
       .update(buffer)
       .digest('hex')}`;
 
+    console.log('[ResumeExtractor] Starting extraction, cache key:', cacheKey);
+
     // Try to get result from cache first
     const cachedResult = await getLLMCache(cacheKey);
     if (cachedResult) {
       console.log('[ResumeExtractor] Returning cached result');
+      console.log('[ResumeExtractor] Cached data preview:', JSON.stringify({
+        name: cachedResult.name,
+        email: cachedResult.email,
+        skillsCount: cachedResult.skills?.length || 0,
+        experienceCount: cachedResult.experience?.length || 0
+      }));
       return cachedResult as ResumeData;
     }
 
     // Parse PDF to extract text
+    console.log('[ResumeExtractor] Parsing PDF...');
     const text = await parsePDF(buffer);
+    console.log(`[ResumeExtractor] PDF parsed - Text length: ${text.length} characters`);
+    
+    if (text.length === 0) {
+      console.error('[ResumeExtractor] ERROR: PDF text extraction returned EMPTY string!');
+      console.error('[ResumeExtractor] This usually means:');
+      console.error('[ResumeExtractor]   1. PDF is a scanned image (not text-based)');
+      console.error('[ResumeExtractor]   2. PDF is corrupted or invalid');
+      console.error('[ResumeExtractor]   3. PDF format is not supported by unpdf');
+      console.error('[ResumeExtractor] Solution: Use text-based PDFs or implement OCR');
+      
+      // Return empty but valid structure instead of throwing
+      return {
+        name: '',
+        email: '',
+        phone: '',
+        skills: [],
+        experience: [],
+        education: [],
+        certifications: [],
+        industrialExperience: [],
+        domainExperience: [],
+        totalIndustrialExperienceYears: 0,
+        totalDomainExperienceYears: 0
+      };
+    }
+    
+    console.log(`[ResumeExtractor] First 300 chars of extracted text: ${text.substring(0, 300)}...`);
     
     // Use Groq to extract structured data with lower temperature for more deterministic output
     // and limited tokens to reduce costs and improve speed
+    console.log('[ResumeExtractor] Calling Groq API...');
     const response = await groqChatCompletion(
       "You are an expert HR assistant specializing in extracting information from resumes.",
       `${RESUME_EXTRACTION_PROMPT}\n\nResume text:\n${text.substring(0, 10000)}`,
@@ -455,12 +492,33 @@ export async function extractResumeData(buffer: Buffer): Promise<ResumeData> {
       1024 // Limit tokens as we're extracting structured data
     );
     
+    console.log(`[ResumeExtractor] Groq API response length: ${response.length} characters`);
+    console.log(`[ResumeExtractor] Groq API response preview: ${response.substring(0, 500)}...`);
+    
+    if (!response || response.length === 0) {
+      console.error('[ResumeExtractor] ERROR: Groq API returned EMPTY response!');
+      throw new Error('Groq API returned empty response');
+    }
+    
     // Parse the JSON response
     try {
+      console.log('[ResumeExtractor] Attempting to parse JSON response...');
       let resumeData: any = extractJsonFromResponse(response);
       
-      // Debug: Log the raw response for troubleshooting
+      console.log('[ResumeExtractor] JSON parsed successfully');
+      console.log('[ResumeExtractor] Parsed data keys:', Object.keys(resumeData));
       console.log('[ResumeExtractor] Raw AI response:', JSON.stringify(resumeData, null, 2));
+      
+      // Check for empty critical fields
+      if (!resumeData.name || resumeData.name === '') {
+        console.warn('[ResumeExtractor] WARNING: name is empty!');
+      }
+      if (!resumeData.email || resumeData.email === '') {
+        console.warn('[ResumeExtractor] WARNING: email is empty!');
+      }
+      if (!resumeData.skills || resumeData.skills.length === 0) {
+        console.warn('[ResumeExtractor] WARNING: skills array is empty!');
+      }
       
       // Ensure proper data types
       if (resumeData.industrialExperience && !Array.isArray(resumeData.industrialExperience)) {
@@ -503,6 +561,28 @@ export async function extractResumeData(buffer: Buffer): Promise<ResumeData> {
       });
       
       console.log('[ResumeExtractor] Final totalIndustrialExperienceYears:', resumeData.totalIndustrialExperienceYears);
+      
+      // Final validation of critical fields
+      const criticalFields = ['name', 'email', 'skills', 'experience'];
+      const emptyFields = criticalFields.filter(field => {
+        if (Array.isArray(resumeData[field])) {
+          return resumeData[field].length === 0;
+        }
+        return !resumeData[field] || resumeData[field] === '';
+      });
+      
+      if (emptyFields.length > 0) {
+        console.warn(`[ResumeExtractor] WARNING: The following fields are empty: ${emptyFields.join(', ')}`);
+      }
+      
+      console.log('[ResumeExtractor] Final data summary:', {
+        name: resumeData.name || 'EMPTY',
+        email: resumeData.email || 'EMPTY',
+        phone: resumeData.phone || 'EMPTY',
+        skillsCount: resumeData.skills?.length || 0,
+        experienceCount: resumeData.experience?.length || 0,
+        totalYears: resumeData.totalIndustrialExperienceYears
+      });
       
       // Cache the result for 24 hours
       await setLLMCache(cacheKey, resumeData, 1000 * 60 * 60 * 24);

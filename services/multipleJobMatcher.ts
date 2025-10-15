@@ -3,6 +3,8 @@ import { JobDescriptionData, extractJobDescriptionData } from "./jdExtractor";
 import { ResumeData, extractResumeData } from "./resumeExtractor";
 import { getLLMCache, setLLMCache } from "../utils/llmCache";
 import { createHash } from "crypto";
+import { createLogger } from "../utils/logger";
+import { processMatrix } from "../utils/batchProcessor";
 
 export interface MultipleMatchInput {
   jdFiles: File[];
@@ -37,6 +39,15 @@ export interface MultipleMatchResult {
       relevantExperience: string;
     };
     rejectionReason?: string;
+    // Additional fields for output formatting
+    candidateEmail?: string;
+    candidatePhone?: string;
+    candidateCertifications?: string[];
+    candidateExperience?: any[];
+    candidateIndustrialExperienceYears?: number;
+    candidateDomainExperienceYears?: number;
+    requiredIndustrialExperienceYears?: number;
+    requiredDomainExperienceYears?: number;
     [key: string]: any;
   };
 }
@@ -247,80 +258,159 @@ Be strict in evaluation - only mark as relevant if there's genuine role and skil
   }
 }
 
-export async function matchMultipleJDsWithMultipleResumes(input: MultipleMatchInput): Promise<MultipleMatchResult[]> {
+export async function matchMultipleJDsWithMultipleResumes(
+  input: MultipleMatchInput,
+  requestId?: string
+): Promise<MultipleMatchResult[]> {
+  const logger = createLogger(requestId, 'MultipleJobMatcher');
+  
   try {
-    console.log(`[MultipleJobMatcher] Processing ${input.jdFiles.length} JDs against ${input.resumeFiles.length} resumes`);
+    const totalCombinations = input.jdFiles.length * input.resumeFiles.length;
+    logger.info('Starting multiple job matching', {
+      jdCount: input.jdFiles.length,
+      resumeCount: input.resumeFiles.length,
+      totalCombinations
+    });
     
     // Extract all JDs with caching
+    const extractionLogger = logger.child('Extraction');
+    extractionLogger.info('Extracting job descriptions', { count: input.jdFiles.length });
+    
     const jdExtractions = await Promise.all(
       input.jdFiles.map(async (file, index) => {
         const buffer = Buffer.from(await file.arrayBuffer());
         const data = await extractWithCache(buffer, file.name, 'jd') as JobDescriptionData;
+        extractionLogger.debug('JD extracted', { index, fileName: file.name, title: data.title });
         return { index, data, fileName: file.name };
       })
     );
     
     // Extract all resumes with caching
+    extractionLogger.info('Extracting resumes', { count: input.resumeFiles.length });
+    
     const resumeExtractions = await Promise.all(
       input.resumeFiles.map(async (file, index) => {
         const buffer = Buffer.from(await file.arrayBuffer());
         const data = await extractWithCache(buffer, file.name, 'resume') as ResumeData;
+        extractionLogger.debug('Resume extracted', { index, fileName: file.name, name: data.name });
         return { index, data, fileName: file.name };
       })
     );
     
-    console.log(`[MultipleJobMatcher] Extracted ${jdExtractions.length} JDs and ${resumeExtractions.length} resumes`);
+    extractionLogger.info('Extraction completed', {
+      jdCount: jdExtractions.length,
+      resumeCount: resumeExtractions.length
+    });
     
-    // Perform matching for all combinations
-    const allMatchResults: MultipleMatchResult[] = [];
+    // Perform matching for all combinations with controlled concurrency
+    const matchLogger = logger.child('Matching');
+    let processedCount = 0;
     
-    for (const jdExtraction of jdExtractions) {
-      for (const resumeExtraction of resumeExtractions) {
-        try {
-          console.log(`[MultipleJobMatcher] Matching JD "${jdExtraction.data.title}" with resume "${resumeExtraction.data.name}"`);
-          
-          const matchAnalysis = await performSingleMatch(jdExtraction.data, resumeExtraction.data);
-          
-          // Check if this is a relevant match
-          const isRelevant = matchAnalysis.relevantMatch === true && matchAnalysis.matchScore >= 60;
-          
-          if (isRelevant) {
-            const matchResult: MultipleMatchResult = {
-              jdIndex: jdExtraction.index,
-              resumeIndex: resumeExtraction.index,
-              jdTitle: jdExtraction.data.title || `JD ${jdExtraction.index + 1}`,
-              candidateName: resumeExtraction.data.name || `Candidate ${resumeExtraction.index + 1}`,
-              matchScore: matchAnalysis.matchScore || 0,
-              matchedSkills: matchAnalysis.skillsetMatch?.matchedSkills || [],
-              unmatchedSkills: matchAnalysis.skillsetMatch?.criticalMissingSkills || [],
-              strengths: matchAnalysis.strengths || [],
-              recommendations: matchAnalysis.recommendations || [],
-              analysis: matchAnalysis
-            };
-            
-            allMatchResults.push(matchResult);
-            console.log(`[MultipleJobMatcher] ✅ Relevant match found: ${matchResult.candidateName} -> ${matchResult.jdTitle} (Score: ${matchResult.matchScore})`);
-          } else {
-            console.log(`[MultipleJobMatcher] ❌ Irrelevant match filtered out: ${resumeExtraction.data.name} -> ${jdExtraction.data.title} (Score: ${matchAnalysis.matchScore || 0})`);
-            if (matchAnalysis.rejectionReason) {
-              console.log(`[MultipleJobMatcher] Rejection reason: ${matchAnalysis.rejectionReason}`);
-            }
+    const matchProcessor = async (
+      jdExtraction: typeof jdExtractions[0],
+      resumeExtraction: typeof resumeExtractions[0],
+      jdIndex: number,
+      resumeIndex: number
+    ) => {
+      matchLogger.debug('Matching combination', {
+        jdTitle: jdExtraction.data.title,
+        candidateName: resumeExtraction.data.name,
+        jdIndex,
+        resumeIndex
+      });
+      
+      const matchAnalysis = await performSingleMatch(jdExtraction.data, resumeExtraction.data);
+      
+      // Check if this is a relevant match
+      const isRelevant = matchAnalysis.relevantMatch === true && matchAnalysis.matchScore >= 60;
+      
+      if (isRelevant) {
+        const matchResult: MultipleMatchResult = {
+          jdIndex: jdExtraction.index,
+          resumeIndex: resumeExtraction.index,
+          jdTitle: jdExtraction.data.title || `JD ${jdExtraction.index + 1}`,
+          candidateName: resumeExtraction.data.name || `Candidate ${resumeExtraction.index + 1}`,
+          matchScore: matchAnalysis.matchScore || 0,
+          matchedSkills: matchAnalysis.skillsetMatch?.matchedSkills || [],
+          unmatchedSkills: matchAnalysis.skillsetMatch?.criticalMissingSkills || [],
+          strengths: matchAnalysis.strengths || [],
+          recommendations: matchAnalysis.recommendations || [],
+          analysis: {
+            ...matchAnalysis,
+            // Add resume data for output formatting
+            candidateEmail: resumeExtraction.data.email,
+            candidatePhone: resumeExtraction.data.phone,
+            candidateCertifications: resumeExtraction.data.certifications || [],
+            candidateExperience: resumeExtraction.data.experience || [],
+            candidateIndustrialExperienceYears: resumeExtraction.data.totalIndustrialExperienceYears || 0,
+            candidateDomainExperienceYears: resumeExtraction.data.totalDomainExperienceYears || 0,
+            requiredIndustrialExperienceYears: jdExtraction.data.requiredIndustrialExperienceYears || 0,
+            requiredDomainExperienceYears: jdExtraction.data.requiredDomainExperienceYears || 0
           }
-        } catch (error) {
-          console.error(`[MultipleJobMatcher] Error matching JD ${jdExtraction.index} with resume ${resumeExtraction.index}:`, error);
-          // Don't add failed matches to results - only log them
+        };
+        
+        matchLogger.info('Relevant match found', {
+          candidateName: matchResult.candidateName,
+          jdTitle: matchResult.jdTitle,
+          matchScore: matchResult.matchScore
+        });
+        
+        return matchResult;
+      } else {
+        matchLogger.debug('Match filtered out (low relevance)', {
+          candidateName: resumeExtraction.data.name,
+          jdTitle: jdExtraction.data.title,
+          matchScore: matchAnalysis.matchScore || 0,
+          rejectionReason: matchAnalysis.rejectionReason
+        });
+        
+        return null;
+      }
+    };
+    
+    // Process matrix with controlled concurrency (3 parallel operations)
+    const batchResult = await processMatrix(
+      jdExtractions,
+      resumeExtractions,
+      matchProcessor,
+      {
+        concurrency: 3,
+        onProgress: (processed, total) => {
+          if (processed % 5 === 0 || processed === total) {
+            matchLogger.info('Matching progress', {
+              processed,
+              total,
+              percentage: Math.round((processed / total) * 100)
+            });
+          }
+        },
+        onError: (error, item, index) => {
+          matchLogger.error('Match processing failed', error, {
+            index,
+            item: item ? { jd: item.row?.data?.title, resume: item.col?.data?.name } : null
+          });
         }
       }
-    }
+    );
     
-    console.log(`[MultipleJobMatcher] Completed matching. Found ${allMatchResults.length} relevant matches out of ${input.jdFiles.length * input.resumeFiles.length} total combinations`);
+    // Filter out null results (filtered matches) and remove row/col index metadata
+    const allMatchResults = batchResult.success
+      .filter((result): result is MultipleMatchResult & { rowIndex: number; colIndex: number } => result !== null)
+      .map(({ rowIndex, colIndex, ...matchResult }) => matchResult);
+    
+    logger.info('Matching completed', {
+      totalProcessed: batchResult.totalProcessed,
+      relevantMatches: allMatchResults.length,
+      filteredOut: totalCombinations - allMatchResults.length,
+      errors: batchResult.totalErrors
+    });
     
     // Sort results by match score (highest first)
     allMatchResults.sort((a, b) => b.matchScore - a.matchScore);
     
     return allMatchResults;
   } catch (error) {
-    console.error('[MultipleJobMatcher] Error in matchMultipleJDsWithMultipleResumes:', error);
+    logger.error('Multiple job matching failed', error instanceof Error ? error : new Error(String(error)));
     throw error;
   }
 }

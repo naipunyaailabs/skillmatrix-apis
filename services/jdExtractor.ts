@@ -168,18 +168,58 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
       .update(buffer)
       .digest('hex')}`;
 
+    console.log('[JDExtractor] Starting extraction, cache key:', cacheKey);
+
     // Try to get result from cache first
     const cachedResult = await getLLMCache(cacheKey);
     if (cachedResult) {
       console.log('[JDExtractor] Returning cached result');
+      console.log('[JDExtractor] Cached data preview:', JSON.stringify({
+        title: cachedResult.title,
+        company: cachedResult.company,
+        skillsCount: cachedResult.skills?.length || 0,
+        requirementsCount: cachedResult.requirements?.length || 0
+      }));
       return cachedResult as JobDescriptionData;
     }
 
     // Parse PDF to extract text
+    console.log('[JDExtractor] Parsing PDF...');
     const text = await parsePDF(buffer);
+    console.log(`[JDExtractor] PDF parsed - Text length: ${text.length} characters`);
+    
+    if (text.length === 0) {
+      console.error('[JDExtractor] ERROR: PDF text extraction returned EMPTY string!');
+      console.error('[JDExtractor] This usually means:');
+      console.error('[JDExtractor]   1. PDF is a scanned image (not text-based)');
+      console.error('[JDExtractor]   2. PDF is corrupted or invalid');
+      console.error('[JDExtractor]   3. PDF format is not supported by unpdf');
+      console.error('[JDExtractor] Solution: Use text-based PDFs or implement OCR');
+      
+      // Return empty but valid structure instead of throwing
+      return {
+        title: '',
+        company: '',
+        location: '',
+        salary: '',
+        requirements: [],
+        responsibilities: [],
+        skills: [],
+        industrialExperience: [],
+        domainExperience: [],
+        requiredIndustrialExperienceYears: 0,
+        requiredDomainExperienceYears: 0,
+        employmentType: '',
+        department: '',
+        description: ''
+      };
+    }
+    
+    console.log(`[JDExtractor] First 300 chars of extracted text: ${text.substring(0, 300)}...`);
     
     // Use Groq to extract structured data with lower temperature for more deterministic output
     // and limited tokens to reduce costs and improve speed
+    console.log('[JDExtractor] Calling Groq API...');
     const response = await groqChatCompletion(
       "You are an expert HR assistant specializing in extracting information from job descriptions.",
       `${JD_EXTRACTION_PROMPT}\n\nJob description text:\n${text.substring(0, 10000)}`,
@@ -187,9 +227,33 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
       1500 // Increased token limit to accommodate additional fields
     );
     
+    console.log(`[JDExtractor] Groq API response length: ${response.length} characters`);
+    console.log(`[JDExtractor] Groq API response preview: ${response.substring(0, 500)}...`);
+    
+    if (!response || response.length === 0) {
+      console.error('[JDExtractor] ERROR: Groq API returned EMPTY response!');
+      throw new Error('Groq API returned empty response');
+    }
+    
     // Parse the JSON response
     try {
+      console.log('[JDExtractor] Attempting to parse JSON response...');
       let jdData: any = extractJsonFromResponse(response);
+      
+      console.log('[JDExtractor] JSON parsed successfully');
+      console.log('[JDExtractor] Parsed data keys:', Object.keys(jdData));
+      console.log('[JDExtractor] Raw AI response:', JSON.stringify(jdData, null, 2));
+      
+      // Check for empty critical fields
+      if (!jdData.title || jdData.title === '') {
+        console.warn('[JDExtractor] WARNING: title is empty!');
+      }
+      if (!jdData.company || jdData.company === '') {
+        console.warn('[JDExtractor] WARNING: company is empty!');
+      }
+      if (!jdData.skills || jdData.skills.length === 0) {
+        console.warn('[JDExtractor] WARNING: skills array is empty!');
+      }
       
       // Ensure proper data types
       if (jdData.industrialExperience && !Array.isArray(jdData.industrialExperience)) {
@@ -216,6 +280,28 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
         } else if (!jdData[field]) {
           jdData[field] = [];
         }
+      });
+      
+      // Final validation of critical fields
+      const criticalFields = ['title', 'company', 'skills', 'requirements'];
+      const emptyFields = criticalFields.filter(field => {
+        if (Array.isArray(jdData[field])) {
+          return jdData[field].length === 0;
+        }
+        return !jdData[field] || jdData[field] === '';
+      });
+      
+      if (emptyFields.length > 0) {
+        console.warn(`[JDExtractor] WARNING: The following fields are empty: ${emptyFields.join(', ')}`);
+      }
+      
+      console.log('[JDExtractor] Final data summary:', {
+        title: jdData.title || 'EMPTY',
+        company: jdData.company || 'EMPTY',
+        location: jdData.location || 'EMPTY',
+        skillsCount: jdData.skills?.length || 0,
+        requirementsCount: jdData.requirements?.length || 0,
+        requiredYears: jdData.requiredIndustrialExperienceYears
       });
       
       // Cache the result for 24 hours

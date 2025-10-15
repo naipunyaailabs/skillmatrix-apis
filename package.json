@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "bun run index.ts",
-    "dev": "bun run --watch index.ts"
+    "dev": "bun run --watch index.ts",
+    "clear-cache": "bun run clearCache.ts --confirm",
+    "cache-status": "bun run clearCache.ts",
+    "test-extraction": "bun run testExtraction.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

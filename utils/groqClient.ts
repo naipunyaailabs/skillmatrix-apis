@@ -81,6 +81,8 @@ export async function groqChatCompletion(
   temperature: number = 0.3, // Lower temperature for more deterministic output
   max_tokens: number = 1024 // Limit tokens to reduce costs and improve speed
 ): Promise<string> {
+  console.log(`[GroqClient] Starting API call - User prompt length: ${user.length} chars, Max tokens: ${max_tokens}`);
+  
   let attempts = 0;
   const maxAttempts = Math.max(groqClients.length * 2, 3); // Try each key twice, minimum 3 attempts
   
@@ -95,6 +97,8 @@ export async function groqChatCompletion(
       
       const groq = getCurrentGroqClient();
       
+      console.log(`[GroqClient] Making API call (attempt ${attempts + 1}/${maxAttempts}) with model: ${GROQ_MODEL}`);
+      
       const chatCompletion = await groq.chat.completions.create({
         messages: [
           { role: "system", content: system },
@@ -104,8 +108,15 @@ export async function groqChatCompletion(
         temperature: temperature,
         max_tokens: max_tokens,
       });
+      
+      const responseContent = chatCompletion.choices[0]?.message?.content || '';
+      console.log(`[GroqClient] API call successful - Response length: ${responseContent.length} chars`);
+      
+      if (responseContent.length === 0) {
+        console.warn('[GroqClient] WARNING: API returned empty response!');
+      }
 
-      return chatCompletion.choices[0]?.message?.content || '';
+      return responseContent;
     } catch (error) {
       attempts++;
       console.error(`[GroqClient] Attempt ${attempts} failed:`, error);
