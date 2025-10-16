@@ -4,7 +4,7 @@ import { ResumeData, extractResumeData } from "./resumeExtractor";
 import { getLLMCache, setLLMCache } from "../utils/llmCache";
 import { createHash } from "crypto";
 import { createLogger } from "../utils/logger";
-import { processMatrix } from "../utils/batchProcessor";
+import { processMatrix, processBatch } from "../utils/batchProcessor";
 
 export interface MultipleMatchInput {
   jdFiles: File[];
@@ -93,24 +93,43 @@ async function setCachedExtraction(fileBuffer: Buffer, fileName: string, type: '
 }
 
 async function extractWithCache(fileBuffer: Buffer, fileName: string, type: 'jd' | 'resume'): Promise<JobDescriptionData | ResumeData> {
-  // Try to get from cache first
-  const cached = await getCachedExtraction(fileBuffer, fileName, type);
-  if (cached) {
-    return cached;
+  try {
+    console.log(`[extractWithCache] Starting extraction for ${type}: ${fileName}`);
+    
+    // Try to get from cache first
+    const cached = await getCachedExtraction(fileBuffer, fileName, type);
+    if (cached) {
+      console.log(`[extractWithCache] Using cached data for ${fileName}`);
+      return cached;
+    }
+    
+    console.log(`[extractWithCache] No cache found, extracting fresh for ${fileName}`);
+    
+    // Extract data
+    let extractedData: JobDescriptionData | ResumeData;
+    if (type === 'jd') {
+      extractedData = await extractJobDescriptionData(fileBuffer);
+    } else {
+      extractedData = await extractResumeData(fileBuffer);
+    }
+    
+    console.log(`[extractWithCache] Extraction complete for ${fileName}`);
+    console.log(`[extractWithCache] Data preview:`, {
+      type,
+      fileName,
+      hasName: type === 'resume' ? !!(extractedData as ResumeData).name : undefined,
+      hasTitle: type === 'jd' ? !!(extractedData as JobDescriptionData).title : undefined,
+      hasEmail: type === 'resume' ? !!(extractedData as ResumeData).email : undefined
+    });
+    
+    // Cache the extracted data
+    await setCachedExtraction(fileBuffer, fileName, type, extractedData);
+    
+    return extractedData;
+  } catch (error) {
+    console.error(`[extractWithCache] ERROR extracting ${type} from ${fileName}:`, error);
+    throw error; // Re-throw to propagate the error
   }
-  
-  // Extract data
-  let extractedData: JobDescriptionData | ResumeData;
-  if (type === 'jd') {
-    extractedData = await extractJobDescriptionData(fileBuffer);
-  } else {
-    extractedData = await extractResumeData(fileBuffer);
-  }
-  
-  // Cache the extracted data
-  await setCachedExtraction(fileBuffer, fileName, type, extractedData);
-  
-  return extractedData;
 }
 
 const MULTIPLE_MATCHING_PROMPT = `You are an expert HR consultant specializing in job-resume matching analysis.
@@ -272,35 +291,139 @@ export async function matchMultipleJDsWithMultipleResumes(
       totalCombinations
     });
     
-    // Extract all JDs with caching
+    // Extract all JDs with caching - using controlled concurrency to avoid race conditions
     const extractionLogger = logger.child('Extraction');
     extractionLogger.info('Extracting job descriptions', { count: input.jdFiles.length });
     
-    const jdExtractions = await Promise.all(
-      input.jdFiles.map(async (file, index) => {
+    // Process JD extractions with controlled concurrency (1 at a time to avoid race conditions)
+    const jdExtractionResults = await processBatch(
+      input.jdFiles,
+      async (file, index) => {
         const buffer = Buffer.from(await file.arrayBuffer());
+        extractionLogger.debug(`Processing JD ${index + 1}/${input.jdFiles.length}`, { fileName: file.name, bufferSize: buffer.length });
+        
         const data = await extractWithCache(buffer, file.name, 'jd') as JobDescriptionData;
-        extractionLogger.debug('JD extracted', { index, fileName: file.name, title: data.title });
+        
+        // Validate extraction result
+        const isEmpty = !data.title && !data.company && (!data.skills || data.skills.length === 0);
+        if (isEmpty) {
+          extractionLogger.warn('⚠️  JD extraction returned EMPTY data!', {
+            index,
+            fileName: file.name,
+            bufferSize: buffer.length,
+            extractedData: data
+          });
+        } else {
+          extractionLogger.debug('✓ JD extracted successfully', {
+            index,
+            fileName: file.name,
+            title: data.title,
+            company: data.company,
+            skillsCount: data.skills?.length || 0
+          });
+        }
+        
         return { index, data, fileName: file.name };
-      })
+      },
+      {
+        concurrency: 1, // Process one at a time to avoid race conditions
+        onProgress: (processed, total) => {
+          extractionLogger.info('JD extraction progress', { processed, total });
+        },
+        onError: (error, item, index) => {
+          extractionLogger.error('JD extraction failed', error, { fileName: (item as File).name, index });
+        }
+      }
     );
     
-    // Extract all resumes with caching
+    const jdExtractions = jdExtractionResults.success;
+    
+    // Extract all resumes with caching - using controlled concurrency to avoid race conditions
     extractionLogger.info('Extracting resumes', { count: input.resumeFiles.length });
     
-    const resumeExtractions = await Promise.all(
-      input.resumeFiles.map(async (file, index) => {
+    // Process resume extractions with controlled concurrency (1 at a time to avoid race conditions)
+    const resumeExtractionResults = await processBatch(
+      input.resumeFiles,
+      async (file, index) => {
         const buffer = Buffer.from(await file.arrayBuffer());
+        extractionLogger.debug(`Processing resume ${index + 1}/${input.resumeFiles.length}`, { fileName: file.name, bufferSize: buffer.length });
+        
         const data = await extractWithCache(buffer, file.name, 'resume') as ResumeData;
-        extractionLogger.debug('Resume extracted', { index, fileName: file.name, name: data.name });
+        
+        // Validate extraction result
+        const isEmpty = !data.name && !data.email && (!data.skills || data.skills.length === 0);
+        if (isEmpty) {
+          extractionLogger.warn('⚠️  Resume extraction returned EMPTY data!', {
+            index,
+            fileName: file.name,
+            bufferSize: buffer.length,
+            extractedData: data
+          });
+        } else {
+          extractionLogger.debug('✓ Resume extracted successfully', {
+            index,
+            fileName: file.name,
+            name: data.name,
+            email: data.email,
+            skillsCount: data.skills?.length || 0
+          });
+        }
+        
         return { index, data, fileName: file.name };
-      })
+      },
+      {
+        concurrency: 1, // Process one at a time to avoid race conditions
+        onProgress: (processed, total) => {
+          extractionLogger.info('Resume extraction progress', { processed, total });
+        },
+        onError: (error, item, index) => {
+          extractionLogger.error('Resume extraction failed', error, { fileName: (item as File).name, index });
+        }
+      }
     );
+    
+    const resumeExtractions = resumeExtractionResults.success;
+    
+    // LOG EXTRACTION ERRORS IF ANY
+    if (jdExtractionResults.errors.length > 0) {
+      extractionLogger.error('⚠️  JD EXTRACTION ERRORS', undefined, {
+        errorCount: jdExtractionResults.errors.length,
+        errors: jdExtractionResults.errors.map(e => ({
+          index: e.index,
+          fileName: (e.item as File).name,
+          error: e.error.message,
+          stack: e.error.stack
+        }))
+      });
+    }
+    
+    if (resumeExtractionResults.errors.length > 0) {
+      extractionLogger.error('⚠️  RESUME EXTRACTION ERRORS', undefined, {
+        errorCount: resumeExtractionResults.errors.length,
+        errors: resumeExtractionResults.errors.map(e => ({
+          index: e.index,
+          fileName: (e.item as File).name,
+          error: e.error.message,
+          stack: e.error.stack
+        }))
+      });
+    }
     
     extractionLogger.info('Extraction completed', {
       jdCount: jdExtractions.length,
-      resumeCount: resumeExtractions.length
+      jdErrors: jdExtractionResults.errors.length,
+      resumeCount: resumeExtractions.length,
+      resumeErrors: resumeExtractionResults.errors.length
     });
+    
+    // Check if we have any successful extractions
+    if (jdExtractions.length === 0) {
+      throw new Error(`All JD extractions failed! ${jdExtractionResults.errors.length} errors occurred.`);
+    }
+    
+    if (resumeExtractions.length === 0) {
+      throw new Error(`All resume extractions failed! ${resumeExtractionResults.errors.length} errors occurred.`);
+    }
     
     // Perform matching for all combinations with controlled concurrency
     const matchLogger = logger.child('Matching');
@@ -321,51 +444,40 @@ export async function matchMultipleJDsWithMultipleResumes(
       
       const matchAnalysis = await performSingleMatch(jdExtraction.data, resumeExtraction.data);
       
-      // Check if this is a relevant match
-      const isRelevant = matchAnalysis.relevantMatch === true && matchAnalysis.matchScore >= 60;
+      // Return ALL matches regardless of score (no filtering)
+      const matchResult: MultipleMatchResult = {
+        jdIndex: jdExtraction.index,
+        resumeIndex: resumeExtraction.index,
+        jdTitle: jdExtraction.data.title || `JD ${jdExtraction.index + 1}`,
+        candidateName: resumeExtraction.data.name || `Candidate ${resumeExtraction.index + 1}`,
+        matchScore: matchAnalysis.matchScore || 0,
+        matchedSkills: matchAnalysis.skillsetMatch?.matchedSkills || [],
+        unmatchedSkills: matchAnalysis.skillsetMatch?.criticalMissingSkills || [],
+        strengths: matchAnalysis.strengths || [],
+        recommendations: matchAnalysis.recommendations || [],
+        analysis: {
+          ...matchAnalysis,
+          // Add resume data for output formatting
+          candidateEmail: resumeExtraction.data.email,
+          candidatePhone: resumeExtraction.data.phone,
+          candidateCertifications: resumeExtraction.data.certifications || [],
+          candidateExperience: resumeExtraction.data.experience || [],
+          candidateIndustrialExperienceYears: resumeExtraction.data.totalIndustrialExperienceYears || 0,
+          candidateDomainExperienceYears: resumeExtraction.data.totalDomainExperienceYears || 0,
+          requiredIndustrialExperienceYears: jdExtraction.data.requiredIndustrialExperienceYears || 0,
+          requiredDomainExperienceYears: jdExtraction.data.requiredDomainExperienceYears || 0
+        }
+      };
       
-      if (isRelevant) {
-        const matchResult: MultipleMatchResult = {
-          jdIndex: jdExtraction.index,
-          resumeIndex: resumeExtraction.index,
-          jdTitle: jdExtraction.data.title || `JD ${jdExtraction.index + 1}`,
-          candidateName: resumeExtraction.data.name || `Candidate ${resumeExtraction.index + 1}`,
-          matchScore: matchAnalysis.matchScore || 0,
-          matchedSkills: matchAnalysis.skillsetMatch?.matchedSkills || [],
-          unmatchedSkills: matchAnalysis.skillsetMatch?.criticalMissingSkills || [],
-          strengths: matchAnalysis.strengths || [],
-          recommendations: matchAnalysis.recommendations || [],
-          analysis: {
-            ...matchAnalysis,
-            // Add resume data for output formatting
-            candidateEmail: resumeExtraction.data.email,
-            candidatePhone: resumeExtraction.data.phone,
-            candidateCertifications: resumeExtraction.data.certifications || [],
-            candidateExperience: resumeExtraction.data.experience || [],
-            candidateIndustrialExperienceYears: resumeExtraction.data.totalIndustrialExperienceYears || 0,
-            candidateDomainExperienceYears: resumeExtraction.data.totalDomainExperienceYears || 0,
-            requiredIndustrialExperienceYears: jdExtraction.data.requiredIndustrialExperienceYears || 0,
-            requiredDomainExperienceYears: jdExtraction.data.requiredDomainExperienceYears || 0
-          }
-        };
-        
-        matchLogger.info('Relevant match found', {
-          candidateName: matchResult.candidateName,
-          jdTitle: matchResult.jdTitle,
-          matchScore: matchResult.matchScore
-        });
-        
-        return matchResult;
-      } else {
-        matchLogger.debug('Match filtered out (low relevance)', {
-          candidateName: resumeExtraction.data.name,
-          jdTitle: jdExtraction.data.title,
-          matchScore: matchAnalysis.matchScore || 0,
-          rejectionReason: matchAnalysis.rejectionReason
-        });
-        
-        return null;
-      }
+      matchLogger.debug('Match result', {
+        candidateName: matchResult.candidateName,
+        jdTitle: matchResult.jdTitle,
+        matchScore: matchResult.matchScore,
+        isRelevant: matchAnalysis.relevantMatch,
+        rejectionReason: matchAnalysis.rejectionReason
+      });
+      
+      return matchResult;
     };
     
     // Process matrix with controlled concurrency (3 parallel operations)
@@ -393,15 +505,26 @@ export async function matchMultipleJDsWithMultipleResumes(
       }
     );
     
-    // Filter out null results (filtered matches) and remove row/col index metadata
+    // Get all match results (no filtering) and remove row/col index metadata
     const allMatchResults = batchResult.success
-      .filter((result): result is MultipleMatchResult & { rowIndex: number; colIndex: number } => result !== null)
       .map(({ rowIndex, colIndex, ...matchResult }) => matchResult);
+    
+    // Debug logging
+    if (allMatchResults.length === 0) {
+      logger.error('No match results generated!', undefined, {
+        totalProcessed: batchResult.totalProcessed,
+        totalErrors: batchResult.totalErrors,
+        successCount: batchResult.success.length,
+        errorDetails: batchResult.errors.map(e => ({
+          index: e.index,
+          error: e.error.message
+        }))
+      });
+    }
     
     logger.info('Matching completed', {
       totalProcessed: batchResult.totalProcessed,
-      relevantMatches: allMatchResults.length,
-      filteredOut: totalCombinations - allMatchResults.length,
+      totalMatches: allMatchResults.length,
       errors: batchResult.totalErrors
     });
     

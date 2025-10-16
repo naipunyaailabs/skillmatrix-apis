@@ -137,8 +137,7 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
     const matchResults = await matchMultipleJDsWithMultipleResumes(input, requestId);
     
     logger.info('Batch processing completed successfully', {
-      relevantMatches: matchResults.length,
-      filteredOut: totalCombinations - matchResults.length
+      totalMatches: matchResults.length
     });
     
     // Debug: Log first result structure if available
@@ -198,7 +197,7 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
     };
     
     if (matchResults.length === 0) {
-      logger.warn('No relevant matches found', { totalCombinations });
+      logger.warn('No matches found (possible extraction failures)', { totalCombinations });
     }
     
     return new Response(

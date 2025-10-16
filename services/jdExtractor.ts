@@ -194,25 +194,10 @@ export async function extractJobDescriptionData(buffer: Buffer): Promise<JobDesc
       console.error('[JDExtractor]   1. PDF is a scanned image (not text-based)');
       console.error('[JDExtractor]   2. PDF is corrupted or invalid');
       console.error('[JDExtractor]   3. PDF format is not supported by unpdf');
-      console.error('[JDExtractor] Solution: Use text-based PDFs or implement OCR');
+      console.error('[JDExtractor] File:', buffer.length, 'bytes');
       
-      // Return empty but valid structure instead of throwing
-      return {
-        title: '',
-        company: '',
-        location: '',
-        salary: '',
-        requirements: [],
-        responsibilities: [],
-        skills: [],
-        industrialExperience: [],
-        domainExperience: [],
-        requiredIndustrialExperienceYears: 0,
-        requiredDomainExperienceYears: 0,
-        employmentType: '',
-        department: '',
-        description: ''
-      };
+      // THROW ERROR instead of returning empty data
+      throw new Error(`PDF text extraction failed for JD - extracted 0 characters from ${buffer.length} byte file`);
     }
     
     console.log(`[JDExtractor] First 300 chars of extracted text: ${text.substring(0, 300)}...`);

@@ -9,7 +9,11 @@
     "dev": "bun run --watch index.ts",
     "clear-cache": "bun run clearCache.ts --confirm",
     "cache-status": "bun run clearCache.ts",
-    "test-extraction": "bun run testExtraction.ts"
+    "test-extraction": "bun run testExtraction.ts",
+    "check-extractions": "bun run checkExtractions.ts",
+    "test-multiple-match": "bun run testMultipleMatch.ts",
+    "test-single-pdf": "bun run testSinglePDF.ts",
+    "test-multiple-logs": "bun run testMultipleWithLogs.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

@@ -462,22 +462,10 @@ export async function extractResumeData(buffer: Buffer): Promise<ResumeData> {
       console.error('[ResumeExtractor]   1. PDF is a scanned image (not text-based)');
       console.error('[ResumeExtractor]   2. PDF is corrupted or invalid');
       console.error('[ResumeExtractor]   3. PDF format is not supported by unpdf');
-      console.error('[ResumeExtractor] Solution: Use text-based PDFs or implement OCR');
+      console.error('[ResumeExtractor] File:', buffer.length, 'bytes');
       
-      // Return empty but valid structure instead of throwing
-      return {
-        name: '',
-        email: '',
-        phone: '',
-        skills: [],
-        experience: [],
-        education: [],
-        certifications: [],
-        industrialExperience: [],
-        domainExperience: [],
-        totalIndustrialExperienceYears: 0,
-        totalDomainExperienceYears: 0
-      };
+      // THROW ERROR instead of returning empty data
+      throw new Error(`PDF text extraction failed for resume - extracted 0 characters from ${buffer.length} byte file`);
     }
     
     console.log(`[ResumeExtractor] First 300 chars of extracted text: ${text.substring(0, 300)}...`);
