@@ -13,7 +13,8 @@
     "check-extractions": "bun run checkExtractions.ts",
     "test-multiple-match": "bun run testMultipleMatch.ts",
     "test-single-pdf": "bun run testSinglePDF.ts",
-    "test-multiple-logs": "bun run testMultipleWithLogs.ts"
+    "test-multiple-logs": "bun run testMultipleWithLogs.ts",
+    "test-urls": "bun run testMultipleWithUrls.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

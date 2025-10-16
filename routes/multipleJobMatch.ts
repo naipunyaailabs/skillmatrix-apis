@@ -1,6 +1,7 @@
 import { matchMultipleJDsWithMultipleResumes, type MultipleMatchInput, type MultipleMatchResult } from '../services/multipleJobMatcher';
 import { createLogger } from '../utils/logger';
 import { validateFiles, validateBatchLimits } from '../utils/validators';
+import { downloadMultipleFiles, validateUrls } from '../utils/fileDownloader';
 
 export async function multipleJobMatchHandler(req: Request): Promise<Response> {
   // Generate request ID for tracking
@@ -10,35 +11,138 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
   try {
     logger.info('Received multiple job match request');
     
-    const formData = await req.formData();
+    const contentType = req.headers.get('content-type') || '';
+    let jdFiles: File[] = [];
+    let resumeFiles: File[] = [];
     
-    // Get all JD files
-    const jdFiles: File[] = [];
-    const jdItems = formData.getAll('job_descriptions');
-    logger.debug('Processing job description files', { count: jdItems.length });
-    
-    jdItems.forEach((item, index) => {
-      if (item instanceof File) {
-        logger.debug('JD file received', { index, fileName: item.name, size: item.size });
-        jdFiles.push(item);
-      } else {
-        logger.warn('Invalid JD item type', { index, type: typeof item });
+    // Check if request is JSON (URLs) or FormData (file uploads)
+    if (contentType.includes('application/json')) {
+      // Handle URL-based input
+      logger.info('Processing URL-based input');
+      
+      const body = await req.json();
+      const jdUrls = body.job_description_urls || body.jdUrls || [];
+      const resumeUrls = body.resume_urls || body.resumeUrls || [];
+      
+      // Validate URLs
+      const jdUrlValidation = validateUrls(jdUrls);
+      if (!jdUrlValidation.valid) {
+        logger.error('JD URL validation failed', undefined, { error: jdUrlValidation.error, invalidUrls: jdUrlValidation.invalidUrls });
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            requestId,
+            error: jdUrlValidation.error,
+            invalidUrls: jdUrlValidation.invalidUrls
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
       }
-    });
-    
-    // Get all resume files
-    const resumeFiles: File[] = [];
-    const resumeItems = formData.getAll('resumes');
-    logger.debug('Processing resume files', { count: resumeItems.length });
-    
-    resumeItems.forEach((item, index) => {
-      if (item instanceof File) {
-        logger.debug('Resume file received', { index, fileName: item.name, size: item.size });
-        resumeFiles.push(item);
-      } else {
-        logger.warn('Invalid resume item type', { index, type: typeof item });
+      
+      const resumeUrlValidation = validateUrls(resumeUrls);
+      if (!resumeUrlValidation.valid) {
+        logger.error('Resume URL validation failed', undefined, { error: resumeUrlValidation.error, invalidUrls: resumeUrlValidation.invalidUrls });
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            requestId,
+            error: resumeUrlValidation.error,
+            invalidUrls: resumeUrlValidation.invalidUrls
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
       }
-    });
+      
+      // Download JD files
+      logger.info('Downloading job description files', { count: jdUrls.length });
+      const jdDownloads = await downloadMultipleFiles(jdUrls, (downloaded, total) => {
+        logger.debug('JD download progress', { downloaded, total });
+      });
+      
+      if (jdDownloads.failed.length > 0) {
+        logger.error('Some JD files failed to download', undefined, { failures: jdDownloads.failed });
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            requestId,
+            error: 'Failed to download some job description files',
+            failures: jdDownloads.failed
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      // Download resume files
+      logger.info('Downloading resume files', { count: resumeUrls.length });
+      const resumeDownloads = await downloadMultipleFiles(resumeUrls, (downloaded, total) => {
+        logger.debug('Resume download progress', { downloaded, total });
+      });
+      
+      if (resumeDownloads.failed.length > 0) {
+        logger.error('Some resume files failed to download', undefined, { failures: resumeDownloads.failed });
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            requestId,
+            error: 'Failed to download some resume files',
+            failures: resumeDownloads.failed
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      jdFiles = jdDownloads.successful.map(d => d.file);
+      resumeFiles = resumeDownloads.successful.map(d => d.file);
+      
+      logger.info('All files downloaded successfully', {
+        jdCount: jdFiles.length,
+        resumeCount: resumeFiles.length
+      });
+      
+    } else {
+      // Handle FormData file uploads (original behavior)
+      logger.info('Processing FormData file uploads');
+      
+      const formData = await req.formData();
+      
+      // Get all JD files
+      const jdItems = formData.getAll('job_descriptions');
+      logger.debug('Processing job description files', { count: jdItems.length });
+      
+      jdItems.forEach((item, index) => {
+        if (item instanceof File) {
+          logger.debug('JD file received', { index, fileName: item.name, size: item.size });
+          jdFiles.push(item);
+        } else {
+          logger.warn('Invalid JD item type', { index, type: typeof item });
+        }
+      });
+      
+      // Get all resume files
+      const resumeItems = formData.getAll('resumes');
+      logger.debug('Processing resume files', { count: resumeItems.length });
+      
+      resumeItems.forEach((item, index) => {
+        if (item instanceof File) {
+          logger.debug('Resume file received', { index, fileName: item.name, size: item.size });
+          resumeFiles.push(item);
+        } else {
+          logger.warn('Invalid resume item type', { index, type: typeof item });
+        }
+      });
+    }
     
     // Validate file presence
     if (jdFiles.length === 0) {
@@ -47,7 +151,7 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
         JSON.stringify({ 
           success: false,
           requestId,
-          error: 'No job description files provided. Use "job_descriptions" field for multiple JD files.' 
+          error: 'No job description files provided. Provide either "job_description_urls" (JSON) or "job_descriptions" (FormData).' 
         }),
         {
           status: 400,
@@ -62,7 +166,7 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
         JSON.stringify({ 
           success: false,
           requestId,
-          error: 'No resume files provided. Use "resumes" field for multiple resume files.' 
+          error: 'No resume files provided. Provide either "resume_urls" (JSON) or "resumes" (FormData).' 
         }),
         {
           status: 400,
