@@ -14,6 +14,8 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
     const contentType = req.headers.get('content-type') || '';
     let jdFiles: File[] = [];
     let resumeFiles: File[] = [];
+    let jdUrls: string[] | undefined;
+    let resumeUrls: string[] | undefined;
     
     // Check if request is JSON (URLs) or FormData (file uploads)
     if (contentType.includes('application/json')) {
@@ -21,11 +23,15 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
       logger.info('Processing URL-based input');
       
       const body = await req.json();
-      const jdUrls = body.job_description_urls || body.jdUrls || [];
-      const resumeUrls = body.resume_urls || body.resumeUrls || [];
+      const jdUrlsArray = body.job_description_urls || body.jdUrls || [];
+      const resumeUrlsArray = body.resume_urls || body.resumeUrls || [];
+      
+      // Store URLs for later use
+      jdUrls = jdUrlsArray;
+      resumeUrls = resumeUrlsArray;
       
       // Validate URLs
-      const jdUrlValidation = validateUrls(jdUrls);
+      const jdUrlValidation = validateUrls(jdUrlsArray);
       if (!jdUrlValidation.valid) {
         logger.error('JD URL validation failed', undefined, { error: jdUrlValidation.error, invalidUrls: jdUrlValidation.invalidUrls });
         return new Response(
@@ -42,7 +48,7 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
         );
       }
       
-      const resumeUrlValidation = validateUrls(resumeUrls);
+      const resumeUrlValidation = validateUrls(resumeUrlsArray);
       if (!resumeUrlValidation.valid) {
         logger.error('Resume URL validation failed', undefined, { error: resumeUrlValidation.error, invalidUrls: resumeUrlValidation.invalidUrls });
         return new Response(
@@ -60,8 +66,8 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
       }
       
       // Download JD files
-      logger.info('Downloading job description files', { count: jdUrls.length });
-      const jdDownloads = await downloadMultipleFiles(jdUrls, (downloaded, total) => {
+      logger.info('Downloading job description files', { count: jdUrlsArray.length });
+      const jdDownloads = await downloadMultipleFiles(jdUrlsArray, (downloaded, total) => {
         logger.debug('JD download progress', { downloaded, total });
       });
       
@@ -82,8 +88,8 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
       }
       
       // Download resume files
-      logger.info('Downloading resume files', { count: resumeUrls.length });
-      const resumeDownloads = await downloadMultipleFiles(resumeUrls, (downloaded, total) => {
+      logger.info('Downloading resume files', { count: resumeUrlsArray.length });
+      const resumeDownloads = await downloadMultipleFiles(resumeUrlsArray, (downloaded, total) => {
         logger.debug('Resume download progress', { downloaded, total });
       });
       
@@ -235,7 +241,9 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
     // Perform the matching
     const input: MultipleMatchInput = {
       jdFiles,
-      resumeFiles
+      resumeFiles,
+      jdUrls,
+      resumeUrls
     };
     
     const matchResults = await matchMultipleJDsWithMultipleResumes(input, requestId);
@@ -264,6 +272,10 @@ export async function multipleJobMatchHandler(req: Request): Promise<Response> {
       
       return {
         Id: crypto.randomUUID(),
+        "JD URL": result.jdUrl || null,
+        "Resume URL": result.resumeUrl || null,
+        "JD Filename": result.jdFileName,
+        "Resume Filename": result.resumeFileName,
         "Resume Data": {
           "Job Title": result.jdTitle || '',
           "Matching Percentage": matchScore.toString(),

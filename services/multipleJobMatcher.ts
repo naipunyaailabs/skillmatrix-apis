@@ -9,6 +9,8 @@ import { processMatrix, processBatch } from "../utils/batchProcessor";
 export interface MultipleMatchInput {
   jdFiles: File[];
   resumeFiles: File[];
+  jdUrls?: string[];  // Optional: URLs for JD files
+  resumeUrls?: string[];  // Optional: URLs for resume files
 }
 
 export interface MultipleMatchResult {
@@ -21,6 +23,10 @@ export interface MultipleMatchResult {
   unmatchedSkills: string[];
   strengths: string[];
   recommendations: string[];
+  jdUrl?: string;  // URL of the JD file (if provided)
+  resumeUrl?: string;  // URL of the resume file (if provided)
+  jdFileName: string;  // Filename of the JD
+  resumeFileName: string;  // Filename of the resume
   analysis: {
     relevantMatch: boolean;
     roleAlignment?: {
@@ -455,6 +461,10 @@ export async function matchMultipleJDsWithMultipleResumes(
         unmatchedSkills: matchAnalysis.skillsetMatch?.criticalMissingSkills || [],
         strengths: matchAnalysis.strengths || [],
         recommendations: matchAnalysis.recommendations || [],
+        jdFileName: jdExtraction.fileName,
+        resumeFileName: resumeExtraction.fileName,
+        jdUrl: input.jdUrls?.[jdExtraction.index],
+        resumeUrl: input.resumeUrls?.[resumeExtraction.index],
         analysis: {
           ...matchAnalysis,
           // Add resume data for output formatting
