@@ -19,6 +19,13 @@ curl -X POST http://localhost:3001/generate-mcq \
   }'
 ```
 
+### Voice Interview Generation with URL
+```bash
+curl -X POST http://localhost:3001/generate-voice-questions \
+  -H "Content-Type: application/json" \
+  -d '{"job_description_url": "https://example.com/jd.pdf"}'
+```
+
 ---
 
 ## 📋 Field Names Reference
@@ -27,6 +34,7 @@ curl -X POST http://localhost:3001/generate-mcq \
 |----------|-----------|-------------|
 | `/extract-jd-new` | `job_description_url` or `jd_url` | `job_description` |
 | `/generate-mcq` | `job_description_url` or `jd_url`<br>`resume_url` | `job_description`<br>`resumes` |
+| `/generate-voice-questions` | `job_description_url` or `jd_url` | `job_description` |
 
 ---
 
@@ -83,6 +91,26 @@ const formData = new FormData();
 formData.append('job_description', jdFile);
 formData.append('resumes', resumeFile);
 await fetch('http://localhost:3001/generate-mcq', {
+  method: 'POST',
+  body: formData
+});
+```
+
+### Voice Interview Generation
+```javascript
+// Method 1: URL Input
+await fetch('http://localhost:3001/generate-voice-questions', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    job_description_url: 'https://example.com/jd.pdf'
+  })
+});
+
+// Method 2: File Upload
+const formData = new FormData();
+formData.append('job_description', jdFile);
+await fetch('http://localhost:3001/generate-voice-questions', {
   method: 'POST',
   body: formData
 });

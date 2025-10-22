@@ -14,6 +14,9 @@ Both **JD Extractor New** and **MCQ Generator** endpoints now support **URL-base
 ### 2. MCQ Generator - `/generate-mcq`
 **Supports:** File Upload OR URL Input
 
+### 3. Voice Interview Generator - `/generate-voice-questions`
+**Supports:** File Upload OR URL Input
+
 ---
 
 ## 📝 API Usage
@@ -129,6 +132,63 @@ data = response.json()
 
 ---
 
+#### Voice Interview Generator with URL
+
+**Endpoint:** `POST /generate-voice-questions`  
+**Content-Type:** `application/json`
+
+**Request Body:**
+```json
+{
+  "job_description_url": "https://example.com/jd.pdf"
+}
+```
+
+**Alternative field names:**
+```json
+{
+  "jd_url": "https://example.com/jd.pdf"
+}
+```
+
+**Example with cURL:**
+```bash
+curl -X POST http://localhost:3001/generate-voice-questions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "job_description_url": "https://example.com/jd.pdf"
+  }'
+```
+
+**Example with JavaScript:**
+```javascript
+const response = await fetch('http://localhost:3001/generate-voice-questions', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    job_description_url: 'https://example.com/jd.pdf'
+  })
+});
+
+const data = await response.json();
+```
+
+**Example with Python:**
+```python
+import requests
+
+response = requests.post(
+    'http://localhost:3001/generate-voice-questions',
+    json={'job_description_url': 'https://example.com/jd.pdf'}
+)
+
+data = response.json()
+```
+
+---
+
 ### Option 2: File Upload (Existing)
 
 #### JD Extractor New with File Upload
@@ -161,6 +221,22 @@ curl -X POST http://localhost:3001/extract-jd-new \
 curl -X POST http://localhost:3001/generate-mcq \
   -F "job_description=@/path/to/jd.pdf" \
   -F "resumes=@/path/to/resume.pdf"
+```
+
+---
+
+#### Voice Interview Generator with File Upload
+
+**Endpoint:** `POST /generate-voice-questions`  
+**Content-Type:** `multipart/form-data`
+
+**Form Fields:**
+- `job_description`: PDF file
+
+**Example with cURL:**
+```bash
+curl -X POST http://localhost:3001/generate-voice-questions \
+  -F "job_description=@/path/to/jd.pdf"
 ```
 
 ---
@@ -229,6 +305,40 @@ curl -X POST http://localhost:3001/generate-mcq \
 {
   "success": false,
   "error": "No job description URL provided. Expected field: job_description_url or jd_url"
+}
+```
+
+---
+
+### Voice Interview Generator Response
+
+**Success Response:**
+```json
+{
+  "POST Response": [
+    {
+      "Id": "uuid-string",
+      "Questions": {
+        "questions": [
+          {
+            "question": "Can you describe your experience with React?"
+          },
+          {
+            "question": "How do you handle state management in large applications?"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "error": "Failed to download file from URL",
+  "details": "HTTP error! status: 404"
 }
 ```
 
@@ -437,6 +547,7 @@ fetch('/extract-jd-new', {
 |----------|----------------|------------------|
 | `/extract-jd-new` | `job_description_url` or `jd_url` | `job_description` |
 | `/generate-mcq` | `job_description_url` or `jd_url`<br>`resume_url` | `job_description`<br>`resumes` or `resume` |
+| `/generate-voice-questions` | `job_description_url` or `jd_url` | `job_description` |
 
 ---
 
@@ -455,8 +566,10 @@ If you encounter issues:
 **Files Modified:**
 - `routes/jdExtractorNew.ts`
 - `routes/mcqGenerate.ts`
+- `routes/voiceInterview.ts`
 
 **Files Created:**
 - `testJdExtractUrl.ts`
 - `testMcqUrl.ts`
+- `testVoiceInterviewUrl.ts`
 - `URL_INPUT_UPDATE.md` (this file)
