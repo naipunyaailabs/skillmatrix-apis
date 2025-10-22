@@ -1,62 +1,118 @@
 import { extractJobDescriptionData, transformToJobDescriptionResponse } from '../services/jdExtractor';
 import { JobDescriptionResponse } from '../services/jdExtractor';
+import { downloadFileFromUrl, isValidUrl } from '../utils/fileDownloader';
 
 export async function jdExtractorNewHandler(req: Request): Promise<Response> {
   try {
-    // Check if the request has the correct content type for form data
-    const contentType = req.headers.get('content-type');
-    if (!contentType || !contentType.includes('multipart/form-data')) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Invalid content type. Expected multipart/form-data'
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    let formData: FormData;
-    try {
-      formData = await req.formData();
-    } catch (formError) {
-      console.error('[JDExtractorNewHandler] Form data parsing error:', formError);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Failed to parse form data. Ensure the request is sent with Content-Type: multipart/form-data',
-          details: formError instanceof Error ? formError.message : 'Unknown form parsing error'
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    // Changed field name from 'jobDescription' to 'job_description'
-    const file = formData.get('job_description');
+    const contentType = req.headers.get('content-type') || '';
+    let buffer: Buffer;
     
-    if (!file) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'No job description file provided' 
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+    // Check if request is JSON (URL-based input)
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      const jdUrl = body.job_description_url || body.jd_url;
+      
+      if (!jdUrl) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'No job description URL provided. Expected field: job_description_url or jd_url' 
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      // Validate URL
+      if (!isValidUrl(jdUrl)) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Invalid URL format. URL must start with http:// or https://' 
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      // Download file from URL
+      try {
+        const file = await downloadFileFromUrl(jdUrl);
+        buffer = Buffer.from(await file.arrayBuffer());
+      } catch (downloadError) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Failed to download file from URL',
+            details: downloadError instanceof Error ? downloadError.message : String(downloadError)
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
     }
+    // Handle multipart/form-data (file upload)
+    else if (contentType.includes('multipart/form-data')) {
+      let formData: FormData;
+      try {
+        formData = await req.formData();
+      } catch (formError) {
+        console.error('[JDExtractorNewHandler] Form data parsing error:', formError);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Failed to parse form data',
+            details: formError instanceof Error ? formError.message : 'Unknown form parsing error'
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
 
-    if (!(file instanceof File)) {
+      const file = formData.get('job_description');
+      
+      if (!file) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'No job description file provided' 
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
+      if (!(file instanceof File)) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Invalid file provided. Expected a File object' 
+          }),
+          {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      buffer = Buffer.from(await file.arrayBuffer());
+    }
+    // Invalid content type
+    else {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Invalid file provided. Expected a File object' 
+          error: 'Invalid content type. Expected application/json (for URL) or multipart/form-data (for file upload)'
         }),
         {
           status: 400,
@@ -65,8 +121,8 @@ export async function jdExtractorNewHandler(req: Request): Promise<Response> {
       );
     }
     
-    const buffer = await file.arrayBuffer();
-    const jdData = await extractJobDescriptionData(Buffer.from(buffer));
+    // Extract JD data from buffer
+    const jdData = await extractJobDescriptionData(buffer);
     
     // Transform the data to match the new response format
     const transformedData: JobDescriptionResponse = transformToJobDescriptionResponse(jdData);

@@ -10,7 +10,9 @@ import { audioEvaluateHandler } from "./routes/audioEvaluate";
 import { multipleJobMatchHandler } from "./routes/multipleJobMatch";
 import { jdExtractorNewHandler } from "./routes/jdExtractorNew";
 import { jdExtractorStreamingHandler } from "./routes/jdExtractorStreaming";
+import { mongoNLQueryHandler, mongoDatabaseInfoHandler } from "./routes/mongoNLQuery";
 import { initializeRedisClient } from "./utils/redisClient";
+import { initializeMongoClient } from "./utils/mongoClient";
 
 // Load environment variables
 config();
@@ -20,6 +22,12 @@ const PORT = process.env.HR_TOOLS_PORT || 3001;
 // Initialize Redis client
 initializeRedisClient().catch(error => {
   console.error('[Index] Failed to initialize Redis client:', error);
+});
+
+// Initialize MongoDB client
+initializeMongoClient().catch(error => {
+  console.error('[Index] Failed to initialize MongoDB client:', error);
+  console.warn('[Index] MongoDB features will be unavailable');
 });
 
 // Simple request logging
@@ -160,6 +168,18 @@ const server = serve({
         return response;
       }
 
+      if (req.method === "POST" && url.pathname === "/query-mongo") {
+        const response = await mongoNLQueryHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
+      }
+
+      if (req.method === "GET" && url.pathname === "/mongo-info") {
+        const response = await mongoDatabaseInfoHandler(req);
+        logRequest(req, startTime, response.status);
+        return response;
+      }
+
       const notFoundResponse = new Response(
         JSON.stringify({ 
           success: false, 
@@ -174,7 +194,9 @@ const server = serve({
             "POST /match - Match a job description with one or more resumes (supports both 'resume' for single file and 'resumes' for multiple files)",
             "POST /evaluate - Evaluate a text answer for career-related questions",
             "POST /evaluate-audio - Evaluate audio files for emotion and tone analysis",
-            "POST /match-multiple - Match multiple job descriptions with multiple resumes with caching support"
+            "POST /match-multiple - Match multiple job descriptions with multiple resumes with caching support",
+            "POST /query-mongo - Execute natural language queries against MongoDB via MCP",
+            "GET /mongo-info - Get MongoDB database information and available collections"
           ]
         }),
         {

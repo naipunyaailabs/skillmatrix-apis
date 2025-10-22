@@ -14,12 +14,15 @@
     "test-multiple-match": "bun run testMultipleMatch.ts",
     "test-single-pdf": "bun run testSinglePDF.ts",
     "test-multiple-logs": "bun run testMultipleWithLogs.ts",
-    "test-urls": "bun run testMultipleWithUrls.ts"
+    "test-urls": "bun run testMultipleWithUrls.ts",
+    "test-mongo-nl": "bun run testMongoNL.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
     "@types/uuid": "^10.0.0",
     "dotenv": "^16.0.0",
     "groq-sdk": "^0.5.0",
+    "mongodb": "^6.20.0",
     "ollama": "^0.5.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^4.0.379",
